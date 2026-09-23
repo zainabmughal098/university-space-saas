@@ -7,5 +7,5 @@ app = FastAPI(title="University Space API", version="0.1.0")
 
 @app.get("/health", tags=["health"])
 def health() -> dict[str, str]:
-    """Report process health; no external services are configured yet."""
+    """Report process health independently of database availability."""
     return {"status": "ok"}

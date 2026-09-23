@@ -6,9 +6,9 @@ configure its infrastructure; the application is not tied to a specific universi
 
 ## Current status
 
-Phase 0 foundation only: a TypeScript Next.js application using the App Router,
-ESLint, and a `src/` directory, plus a minimal FastAPI application with a process
-health endpoint. Authentication, tenant isolation, database models, scheduling,
+The Phase 0 applications now include an initial PostgreSQL database foundation:
+SQLAlchemy models for users, university workspaces, and memberships, with Alembic
+migrations. Authentication, enforced tenant isolation (including RLS), scheduling,
 reservations, imports, analytics, optimization, and AI are not implemented.
 
 ## Repository and architecture
@@ -21,8 +21,10 @@ infra/      Future local service and deployment configuration
 ```
 
 The frontend and backend run independently. The frontend will call the API;
-the backend will own authorization, business rules, and database access. A future
-PostgreSQL database will be backend-only. No database is required for this phase.
+the backend will own authorization, business rules, and database access. The
+PostgreSQL database is backend-only. Process health does not require a database.
+Supabase-hosted PostgreSQL is the primary development database; a local PostgreSQL
+installation is not required.
 See [architecture notes](docs/architecture.md).
 
 ## Prerequisites
@@ -81,8 +83,9 @@ intentionally changing dependencies. The application runs directly from `backend
 
 ## Environment and generated files
 
-The frontend and backend each include a `.env.example` with commented placeholders
-only. Neither requires an environment file yet. No real secrets are included.
+The frontend and backend each include a `.env.example` with placeholders only.
+Database access requires `DATABASE_URL` in `backend/.env` or the process environment.
+No real secrets are included. See [backend database setup](backend/README.md).
 Never put secrets in a `NEXT_PUBLIC_` variable: those values are browser-visible.
 
 Git ignores local environment files, node modules, virtual environments, caches,
