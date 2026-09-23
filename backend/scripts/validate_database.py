@@ -19,6 +19,46 @@ from app.database import Base, get_engine
 from app.models import Membership, MembershipRole, User, Workspace
 
 
+def validate_academic_schema(connection) -> None:
+    """Inspect an existing connection; usable by credential-free migration tests."""
+    inspector = inspect(connection)
+    unique_keys = {
+        "departments": [("workspace_id", "id"), ("workspace_id", "code")],
+        "faculty": [("workspace_id", "id"), ("workspace_id", "email")],
+        "courses": [("workspace_id", "id"), ("workspace_id", "code")],
+        "sections": [("workspace_id", "id"), ("workspace_id", "course_id", "name")],
+    }
+    parents = {
+        "faculty": [("department_id", "departments")],
+        "courses": [("department_id", "departments")],
+        "sections": [("course_id", "courses")],
+        "schedule_entries": [("room_id", "rooms"), ("section_id", "sections"), ("faculty_id", "faculty")],
+    }
+    for table, keys in unique_keys.items():
+        actual = {tuple(item["column_names"]) for item in inspector.get_unique_constraints(table)}
+        assert set(keys) <= actual
+    for table in [*unique_keys, "schedule_entries"]:
+        foreign_keys = inspector.get_foreign_keys(table)
+        assert any(fk["constrained_columns"] == ["workspace_id"] and fk["referred_table"] == "workspaces"
+                   and fk["referred_columns"] == ["id"] for fk in foreign_keys)
+        for column, parent in parents.get(table, []):
+            assert any(fk["constrained_columns"] == ["workspace_id", column] and fk["referred_table"] == parent
+                       and fk["referred_columns"] == ["workspace_id", "id"] for fk in foreign_keys)
+        expected_indexes = {tuple(column.name for column in index.columns) for index in Base.metadata.tables[table].indexes}
+        actual_indexes = {tuple(index["column_names"]) for index in inspector.get_indexes(table)}
+        assert expected_indexes <= actual_indexes
+        if connection.dialect.name == "postgresql":
+            for column in inspector.get_columns(table):
+                if column["name"] in {"created_at", "starts_at", "ends_at"}:
+                    assert column["type"].timezone
+    for table, name, expression in [
+        ("sections", "ck_sections_positive_student_count", "student_count>0"),
+        ("schedule_entries", "ck_schedule_entries_positive_interval", "ends_at>starts_at"),
+    ]:
+        checks = {item["name"]: item["sqltext"] for item in inspector.get_check_constraints(table)}
+        assert re.sub(r'[\s()"]', '', checks[name]) == expression
+
+
 def validate() -> None:
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     command.check(config)
@@ -32,6 +72,7 @@ def validate() -> None:
             print(f"Migration revision: {head} (head)")
             context = MigrationContext.configure(connection, opts={"compare_server_default": True})
             assert not compare_metadata(context, Base.metadata)
+            validate_academic_schema(connection)
             inspector = inspect(connection)
             for table in Base.metadata.sorted_tables:
                 assert inspector.get_pk_constraint(table.name)["constrained_columns"] == list(table.primary_key.columns.keys())

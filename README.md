@@ -10,7 +10,9 @@ The Phase 0 applications now include an initial PostgreSQL database foundation:
 SQLAlchemy models for users, university workspaces, and memberships, with Alembic
 migrations. Phase 2A's physical infrastructure schema is migrated and verified.
 Phase 2B provides workspace-scoped infrastructure APIs, with no new migration.
-Authentication, database-enforced read isolation (RLS), scheduling,
+Phase 3A's `0003_academic_scheduling` migration has been applied and validated.
+Phase 3B provides workspace-scoped academic and schedule-entry APIs.
+Authentication, database-enforced read isolation (RLS), conflict detection,
 reservations, imports, analytics, optimization, and AI are not implemented.
 
 ## Repository and architecture

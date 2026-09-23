@@ -1,4 +1,4 @@
-"""Infrastructure HTTP routes; shared registration keeps CRUD behavior consistent."""
+"""Infrastructure and academic routes; shared registration keeps CRUD consistent."""
 
 from typing import Annotated
 from uuid import UUID
@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_session
 from app.schemas import ErrorResponse, FacilityRead, RoomFacilityRead
-from app.services import InfrastructureService, RESOURCES, Resource
+from app.services import WorkspaceService, RESOURCES, Resource
 
 router = APIRouter(prefix="/api/workspaces/{workspace_id}", responses={
     status: {"model": ErrorResponse} for status in (404, 409, 422, 503)
@@ -16,10 +16,10 @@ router = APIRouter(prefix="/api/workspaces/{workspace_id}", responses={
 
 
 def get_service(workspace_id: UUID, session: Annotated[Session, Depends(get_session)]):
-    return InfrastructureService(session, workspace_id)
+    return WorkspaceService(session, workspace_id)
 
 
-Service = Annotated[InfrastructureService, Depends(get_service)]
+Service = Annotated[WorkspaceService, Depends(get_service)]
 Limit = Annotated[int, Query(ge=1, le=200)]
 Offset = Annotated[int, Query(ge=0)]
 

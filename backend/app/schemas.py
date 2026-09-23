@@ -1,10 +1,11 @@
-"""Infrastructure API contracts; tenant ownership comes only from the route."""
+"""API contracts; tenant ownership comes only from the route."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (AfterValidator, AwareDatetime, BaseModel,
+                      ConfigDict, Field, StringConstraints, model_validator)
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
 Code = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
@@ -161,3 +162,127 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: ErrorDetail
+
+
+StudentCount = Annotated[int, Field(strict=True, gt=0, le=2147483647)]
+FacultyEmail = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3,
+                                               max_length=320, pattern=r"^[^@\s]+@[^@\s]+$")]
+ScheduleTime = Annotated[AwareDatetime, AfterValidator(lambda value: value.astimezone(timezone.utc))]
+
+
+def stored_utc(value: datetime) -> datetime:
+    """Return UTC instants; SQLite loses tzinfo from values stored in UTC.
+
+    PostgreSQL returns aware timestamps. Naive values from the isolated SQLite
+    test database are UTC because API writes are normalized before persistence,
+    and its created_at server default also uses UTC. Never use this for input.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+StoredTime = Annotated[datetime, AfterValidator(stored_utc)]
+
+
+class DepartmentCreate(Request):
+    name: Name
+    code: Code
+    is_active: bool = True
+
+
+class DepartmentUpdate(Patch):
+    name: Name | None = None
+    code: Code | None = None
+    is_active: bool | None = None
+
+
+class FacultyCreate(Request):
+    department_id: UUID
+    name: Name
+    email: FacultyEmail
+    is_active: bool = True
+
+
+class FacultyUpdate(Patch):
+    department_id: UUID | None = None
+    name: Name | None = None
+    email: FacultyEmail | None = None
+    is_active: bool | None = None
+
+
+class CourseCreate(DepartmentCreate):
+    department_id: UUID
+
+
+class CourseUpdate(DepartmentUpdate):
+    department_id: UUID | None = None
+
+
+class SectionCreate(Request):
+    course_id: UUID
+    name: Name
+    student_count: StudentCount
+    is_active: bool = True
+
+
+class SectionUpdate(Patch):
+    course_id: UUID | None = None
+    name: Name | None = None
+    student_count: StudentCount | None = None
+    is_active: bool | None = None
+
+
+class ScheduleEntryCreate(Request):
+    room_id: UUID
+    section_id: UUID
+    faculty_id: UUID
+    starts_at: ScheduleTime
+    ends_at: ScheduleTime
+    is_active: bool = True
+
+
+class ScheduleEntryUpdate(Patch):
+    room_id: UUID | None = None
+    section_id: UUID | None = None
+    faculty_id: UUID | None = None
+    starts_at: ScheduleTime | None = None
+    ends_at: ScheduleTime | None = None
+    is_active: bool | None = None
+
+
+class AcademicRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    workspace_id: UUID
+    created_at: StoredTime
+    is_active: bool
+
+
+class DepartmentRead(AcademicRead):
+    name: str
+    code: str
+
+
+class FacultyRead(AcademicRead):
+    department_id: UUID
+    name: str
+    email: str
+
+
+class CourseRead(DepartmentRead):
+    department_id: UUID
+
+
+class SectionRead(AcademicRead):
+    course_id: UUID
+    name: str
+    student_count: int
+
+
+class ScheduleEntryRead(AcademicRead):
+    room_id: UUID
+    section_id: UUID
+    faculty_id: UUID
+    starts_at: StoredTime
+    ends_at: StoredTime

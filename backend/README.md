@@ -40,9 +40,96 @@ authentication and membership authorization are added. Foreign keys do not isola
   Prefer `is_active` for retirement. Room/facility deletion cascades only to their
   association rows. No cascading deletion of the campus/building/floor hierarchy.
 
-The current revision is `0002_university_infrastructure`, following
+The previously validated revision is `0002_university_infrastructure`, following
 `0001_initial_tenants`. Both were applied and verified in Supabase during earlier
 phases. Phase 2B changes neither the database schema nor the migrations.
+
+## Phase 3A academic scheduling data
+
+The current head is `0003_academic_scheduling`, following the unchanged `0002`.
+Migration 0003 was applied and validated before Phase 3B. Phase 3B does not change
+models or migrations and does not access Supabase.
+
+The models are Department, Faculty, Course, Section, and ScheduleEntry. Each has
+an ORM-generated UUID primary key, required workspace ownership, a database-created
+timezone-aware `created_at`, and `is_active` defaulting to true. Faculty represents
+a teacher record independent of User or authentication.
+
+- Department codes, course codes, and faculty emails are unique within a workspace.
+  Section names are unique within their course. Uniqueness remains case-sensitive,
+  including email, and inactive records retain their uniqueness constraints.
+- Composite foreign keys pair `workspace_id` with every academic parent ID,
+  including ScheduleEntry's room, section, and faculty. Corresponding
+  `(workspace_id, id)` unique constraints support those references. ORM parent
+  assignments do not overwrite explicit workspace ownership.
+- Student counts are required PostgreSQL integers with `CHECK (student_count > 0)`.
+  This phase does not compare enrollment with room capacity.
+- ScheduleEntry represents actual class occupancy during `[starts_at, ends_at)`.
+  Both endpoints are required `TIMESTAMP WITH TIME ZONE` values, with
+  `CHECK (ends_at > starts_at)`. Callers should supply timezone-aware datetimes;
+  PostgreSQL stores instants, not the original timezone identifier.
+- Adjacent intervals are conceptually non-overlapping. Overlapping and duplicate
+  occupancy entries are currently allowed: conflict detection, exclusion
+  constraints, recurrence, reservations, and imports are intentionally deferred.
+- Tenant-first indexes cover faculty/course department lookups and schedule
+  lookups by workspace/start, room/start, section/start, and faculty/start.
+  Unique indexes also support workspace and course/section lookups.
+- Referenced departments, courses, faculty, sections, and rooms cannot be deleted.
+  Inactive schedule entries still retain their references. There are no academic
+  deletion cascades.
+
+The schedule's faculty and section must share a workspace, but may belong to
+different departments. The schema does not impose teaching-assignment rules.
+Relationships connect Workspace to departments, Department to faculty/courses,
+Course to sections, and Room/Section/Faculty to schedule entries.
+
+Credential-free validation uses migrated SQLite databases and offline PostgreSQL
+SQL generation. SQLite does not preserve PostgreSQL timezone semantics; the
+tests verify timezone-aware column definitions and PostgreSQL DDL, not a live
+PostgreSQL timestamp round trip. No private configuration is needed. The live
+validator's academic inspection helper is tested on disposable connections;
+the live validator itself is not run during Phase 3B.
+
+## Phase 3B academic API
+
+Base path: `/api/workspaces/{workspace_id}`. Resource paths are `departments`,
+`faculty`, `courses`, `sections`, and `schedule-entries`. Each supports:
+
+| Method | Path after base | Result |
+| --- | --- | --- |
+| POST | `/{resource}` | Create, 201 |
+| GET | `/{resource}` | Paginated list, 200 |
+| GET | `/{resource}/{id}` | Retrieve, 200 |
+| PATCH | `/{resource}/{id}` | Partial update, 200 |
+| POST | `/{resource}/{id}/deactivate` | Set `is_active=false`, 200 |
+
+All operations use the shared workspace service, Pydantic contracts, and error
+format described below. Reads, parent checks, and mutations are workspace-scoped.
+Bodies reject ownership fields, unknown fields, empty PATCHes, and null values
+for required fields. Missing or foreign-workspace resource IDs return 404;
+missing or foreign-workspace parent references return 422. Duplicates return 409.
+Student counts must be strict positive 32-bit integers. Faculty emails receive
+basic syntax and length validation; case-sensitive database uniqueness is preserved.
+
+Schedules require timezone-aware timestamps (ISO 8601 with `Z` or an offset).
+Inputs are normalized to UTC before persistence; responses serialize UTC instants
+with an offset, including after database reloads. SQLite strips timezone information,
+so response conversion treats its stored UTC values as UTC. PostgreSQL returns
+aware values directly. The API does not reinterpret times in the workspace timezone.
+
+The effective interval must satisfy `ends_at > starts_at`, including one-sided
+PATCHes merged with the stored endpoint. Invalid ranges return 422 and leave the
+record unchanged. PostgreSQL row locking serializes partial updates to the same
+entry during this validation. This is not conflict detection between entries.
+Intervals remain `[starts_at, ends_at)`; adjacent, overlapping, and exact duplicate
+schedule entries are all allowed in this phase.
+
+Lists use `limit`/`offset` and include inactive records. Deactivation is idempotent,
+does not cascade, and PATCH can reactivate records. Inactive parents remain valid
+references. There are no hard-delete academic endpoints. Room capacity checks,
+recurrence, imports, conflict detection, authentication, and RLS remain deferred.
+API tests use isolated SQLite with private configuration and production-engine
+access explicitly blocked. No live PostgreSQL connection is used for this phase.
 
 ## Infrastructure API
 

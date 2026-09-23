@@ -1,4 +1,4 @@
-"""Workspace-scoped infrastructure operations and transaction boundaries."""
+"""Workspace-scoped infrastructure/academic operations and transaction boundaries."""
 
 from dataclasses import dataclass
 from uuid import UUID
@@ -33,20 +33,34 @@ RESOURCES = {
     "facilities": Resource(models.Facility, schemas.FacilityCreate, schemas.FacilityUpdate, schemas.FacilityRead, ("name",)),
     "rooms": Resource(models.Room, schemas.RoomCreate, schemas.RoomUpdate, schemas.RoomRead, ("code",),
                       (("floor_id", models.Floor), ("room_type_id", models.RoomType)), True),
+    "departments": Resource(models.Department, schemas.DepartmentCreate, schemas.DepartmentUpdate,
+                            schemas.DepartmentRead, ("code",), active=True),
+    "faculty": Resource(models.Faculty, schemas.FacultyCreate, schemas.FacultyUpdate, schemas.FacultyRead,
+                        ("email",), (("department_id", models.Department),), True),
+    "courses": Resource(models.Course, schemas.CourseCreate, schemas.CourseUpdate, schemas.CourseRead,
+                        ("code",), (("department_id", models.Department),), True),
+    "sections": Resource(models.Section, schemas.SectionCreate, schemas.SectionUpdate, schemas.SectionRead,
+                         ("course_id", "name"), (("course_id", models.Course),), True),
+    "schedule-entries": Resource(models.ScheduleEntry, schemas.ScheduleEntryCreate, schemas.ScheduleEntryUpdate,
+                                 schemas.ScheduleEntryRead, (), (("room_id", models.Room),
+                                 ("section_id", models.Section), ("faculty_id", models.Faculty)), True),
 }
 
 
-class InfrastructureService:
+class WorkspaceService:
     def __init__(self, session: Session, workspace_id: UUID):
         self.session = session
         self.workspace_id = workspace_id
         if session.scalar(select(models.Workspace.id).where(models.Workspace.id == workspace_id)) is None:
             raise APIError(404, "workspace_not_found", "Workspace not found.")
 
-    def find(self, model, resource_id: UUID):
-        record = self.session.scalar(select(model).where(
+    def find(self, model, resource_id: UUID, *, lock: bool = False):
+        query = select(model).where(
             model.workspace_id == self.workspace_id, model.id == resource_id,
-        ))
+        )
+        if lock:
+            query = query.with_for_update()
+        record = self.session.scalar(query)
         if record is None:
             # Deliberately identical for missing IDs and IDs owned by another workspace.
             raise APIError(404, "resource_not_found", "Resource not found in this workspace.")
@@ -60,6 +74,15 @@ class InfrastructureService:
                 ))
                 if found is None:
                     raise APIError(422, "invalid_parent", f"{field} must reference a resource in this workspace.")
+        if resource.model is models.ScheduleEntry:
+            # Compare the resulting interval, including stored values omitted by PATCH.
+            start = values["starts_at"] if "starts_at" in values else record.starts_at
+            end = values["ends_at"] if "ends_at" in values else record.ends_at
+            if schemas.stored_utc(end) <= schemas.stored_utc(start):
+                raise APIError(422, "validation_error", "ends_at must be later than starts_at.")
+        if not resource.unique_fields:
+            # Schedule overlaps and duplicate occupancy entries are allowed in this phase.
+            return
         query = select(resource.model.id).where(resource.model.workspace_id == self.workspace_id)
         for field in resource.unique_fields:
             value = values[field] if field in values else getattr(record, field)
@@ -67,7 +90,7 @@ class InfrastructureService:
         if record is not None:
             query = query.where(resource.model.id != record.id)
         if self.session.scalar(query) is not None:
-            raise APIError(409, "duplicate_resource", "The code, name, or floor number already exists in its scope.")
+            raise APIError(409, "duplicate_resource", "The unique resource identifier already exists in its scope.")
 
     def save(self, record, response_schema):
         try:
@@ -98,7 +121,8 @@ class InfrastructureService:
         return resource.response.model_validate(self.find(resource.model, resource_id))
 
     def update(self, resource: Resource, resource_id: UUID, payload: BaseModel):
-        record = self.find(resource.model, resource_id)
+        # Serialize concurrent partial schedule changes before checking the merged interval.
+        record = self.find(resource.model, resource_id, lock=resource.model is models.ScheduleEntry)
         values = payload.model_dump(exclude_unset=True)
         self.validate_values(resource, values, record)
         return self.update_values(resource, resource_id, values)

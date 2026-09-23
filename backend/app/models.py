@@ -47,6 +47,7 @@ class Workspace(Base):
         back_populates="workspace", cascade="all, delete-orphan", passive_deletes=True
     )
     campuses: Mapped[list["Campus"]] = relationship(back_populates="workspace", passive_deletes="all")
+    departments: Mapped[list["Department"]] = relationship(back_populates="workspace", passive_deletes="all")
 
 
 class Membership(Base):
@@ -181,6 +182,10 @@ class Room(InfrastructureRecord, Base):
     facilities: Mapped[list["Facility"]] = relationship(
         secondary="room_facilities", viewonly=True, back_populates="rooms",
     )
+    schedule_entries: Mapped[list["ScheduleEntry"]] = relationship(
+        primaryjoin="and_(Room.workspace_id == ScheduleEntry.workspace_id, Room.id == foreign(ScheduleEntry.room_id))",
+        back_populates="room", passive_deletes="all",
+    )
 
 
 class Facility(InfrastructureRecord, Base):
@@ -217,4 +222,132 @@ class RoomFacility(Base):
     facility: Mapped[Facility] = relationship(
         primaryjoin="and_(RoomFacility.workspace_id == Facility.workspace_id, foreign(RoomFacility.facility_id) == Facility.id)",
         back_populates="room_links",
+    )
+
+
+class AcademicRecord:
+    """Tenant-owned academic data; parent assignment preserves explicit ownership."""
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+
+
+class Department(AcademicRecord, Base):
+    __tablename__ = "departments"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id"),
+        UniqueConstraint("workspace_id", "code", name="uq_departments_workspace_code"),
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    code: Mapped[str] = mapped_column(String(64))
+    workspace: Mapped[Workspace] = relationship(back_populates="departments")
+    faculty: Mapped[list["Faculty"]] = relationship(
+        primaryjoin="and_(Department.workspace_id == Faculty.workspace_id, Department.id == foreign(Faculty.department_id))",
+        back_populates="department", passive_deletes="all",
+    )
+    courses: Mapped[list["Course"]] = relationship(
+        primaryjoin="and_(Department.workspace_id == Course.workspace_id, Department.id == foreign(Course.department_id))",
+        back_populates="department", passive_deletes="all",
+    )
+
+
+class Faculty(AcademicRecord, Base):
+    __tablename__ = "faculty"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id"),
+        UniqueConstraint("workspace_id", "email", name="uq_faculty_workspace_email"),
+        ForeignKeyConstraint(["workspace_id", "department_id"], ["departments.workspace_id", "departments.id"]),
+        Index("ix_faculty_workspace_department", "workspace_id", "department_id"),
+    )
+    department_id: Mapped[uuid.UUID] = mapped_column()
+    name: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str] = mapped_column(String(320))
+    department: Mapped[Department] = relationship(
+        primaryjoin="and_(Faculty.workspace_id == Department.workspace_id, foreign(Faculty.department_id) == Department.id)",
+        back_populates="faculty",
+    )
+    schedule_entries: Mapped[list["ScheduleEntry"]] = relationship(
+        primaryjoin="and_(Faculty.workspace_id == ScheduleEntry.workspace_id, Faculty.id == foreign(ScheduleEntry.faculty_id))",
+        back_populates="faculty", passive_deletes="all",
+    )
+
+
+class Course(AcademicRecord, Base):
+    __tablename__ = "courses"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id"),
+        UniqueConstraint("workspace_id", "code", name="uq_courses_workspace_code"),
+        ForeignKeyConstraint(["workspace_id", "department_id"], ["departments.workspace_id", "departments.id"]),
+        Index("ix_courses_workspace_department", "workspace_id", "department_id"),
+    )
+    department_id: Mapped[uuid.UUID] = mapped_column()
+    code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(255))
+    department: Mapped[Department] = relationship(
+        primaryjoin="and_(Course.workspace_id == Department.workspace_id, foreign(Course.department_id) == Department.id)",
+        back_populates="courses",
+    )
+    sections: Mapped[list["Section"]] = relationship(
+        primaryjoin="and_(Course.workspace_id == Section.workspace_id, Course.id == foreign(Section.course_id))",
+        back_populates="course", passive_deletes="all",
+    )
+
+
+class Section(AcademicRecord, Base):
+    __tablename__ = "sections"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id"),
+        UniqueConstraint("workspace_id", "course_id", "name", name="uq_sections_course_name"),
+        ForeignKeyConstraint(["workspace_id", "course_id"], ["courses.workspace_id", "courses.id"]),
+        CheckConstraint("student_count > 0", name="positive_student_count"),
+    )
+    course_id: Mapped[uuid.UUID] = mapped_column()
+    name: Mapped[str] = mapped_column(String(255))
+    student_count: Mapped[int] = mapped_column(Integer)
+    course: Mapped[Course] = relationship(
+        primaryjoin="and_(Section.workspace_id == Course.workspace_id, foreign(Section.course_id) == Course.id)",
+        back_populates="sections",
+    )
+    schedule_entries: Mapped[list["ScheduleEntry"]] = relationship(
+        primaryjoin="and_(Section.workspace_id == ScheduleEntry.workspace_id, Section.id == foreign(ScheduleEntry.section_id))",
+        back_populates="section", passive_deletes="all",
+    )
+
+
+class ScheduleEntry(AcademicRecord, Base):
+    """Actual class occupancy in a room during [starts_at, ends_at).
+
+    Adjacent intervals share no occupied instant. Overlaps are intentionally not
+    checked in this phase; no recurrence, reservation, or exclusion semantics.
+    """
+
+    __tablename__ = "schedule_entries"
+    __table_args__ = (
+        ForeignKeyConstraint(["workspace_id", "room_id"], ["rooms.workspace_id", "rooms.id"]),
+        ForeignKeyConstraint(["workspace_id", "section_id"], ["sections.workspace_id", "sections.id"]),
+        ForeignKeyConstraint(["workspace_id", "faculty_id"], ["faculty.workspace_id", "faculty.id"]),
+        CheckConstraint("ends_at > starts_at", name="positive_interval"),
+        Index("ix_schedule_entries_workspace_start", "workspace_id", "starts_at"),
+        Index("ix_schedule_entries_workspace_room_start", "workspace_id", "room_id", "starts_at"),
+        Index("ix_schedule_entries_workspace_section_start", "workspace_id", "section_id", "starts_at"),
+        Index("ix_schedule_entries_workspace_faculty_start", "workspace_id", "faculty_id", "starts_at"),
+    )
+    room_id: Mapped[uuid.UUID] = mapped_column()
+    section_id: Mapped[uuid.UUID] = mapped_column()
+    faculty_id: Mapped[uuid.UUID] = mapped_column()
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    room: Mapped[Room] = relationship(
+        primaryjoin="and_(ScheduleEntry.workspace_id == Room.workspace_id, foreign(ScheduleEntry.room_id) == Room.id)",
+        back_populates="schedule_entries",
+    )
+    section: Mapped[Section] = relationship(
+        primaryjoin="and_(ScheduleEntry.workspace_id == Section.workspace_id, foreign(ScheduleEntry.section_id) == Section.id)",
+        back_populates="schedule_entries",
+    )
+    faculty: Mapped[Faculty] = relationship(
+        primaryjoin="and_(ScheduleEntry.workspace_id == Faculty.workspace_id, foreign(ScheduleEntry.faculty_id) == Faculty.id)",
+        back_populates="schedule_entries",
     )

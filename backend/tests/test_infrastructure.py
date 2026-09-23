@@ -12,7 +12,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import Integer, create_engine, event, inspect, select, update
+from sqlalchemy import Integer, MetaData, create_engine, event, inspect, select, update
 from sqlalchemy.exc import IntegrityError, SAWarning
 from sqlalchemy.orm import Session, configure_mappers
 
@@ -192,20 +192,24 @@ class InfrastructureTests(unittest.TestCase):
     def test_migration_matches_models_and_preserves_phase1_on_downgrade(self):
         self.session.close()
         second = migration("0002_university_infrastructure")
+        phase2_metadata = MetaData()
+        for table in Base.metadata.sorted_tables:
+            if table.name in TABLES | {"users", "workspaces", "memberships"}:
+                table.to_metadata(phase2_metadata)
         with self.engine.begin() as connection:
             context = MigrationContext.configure(connection)
-            self.assertEqual(compare_metadata(context, Base.metadata), [])
+            self.assertEqual(compare_metadata(context, phase2_metadata), [])
             with Operations.context(context):
                 second.downgrade()
                 self.assertEqual(set(inspect(connection).get_table_names()), {"users", "workspaces", "memberships"})
                 self.assertEqual(len(connection.execute(select(Workspace)).all()), 2)
                 second.upgrade()
-                self.assertEqual(compare_metadata(context, Base.metadata), [])
+                self.assertEqual(compare_metadata(context, phase2_metadata), [])
 
     def test_offline_postgresql_incremental_migration(self):
         output = io.StringIO()
         config = Config(str(BACKEND / "alembic.ini"), output_buffer=output)
-        command.upgrade(config, "0001_initial_tenants:head", sql=True)
+        command.upgrade(config, "0001_initial_tenants:0002_university_infrastructure", sql=True)
         sql = output.getvalue()
         self.assertNotIn("CREATE TABLE users", sql)
         self.assertNotIn("ROW LEVEL SECURITY", sql)
@@ -218,7 +222,7 @@ class InfrastructureTests(unittest.TestCase):
         self.assertIn("FOREIGN KEY(workspace_id, facility_id) REFERENCES facilities (workspace_id, id)", sql)
         output.seek(0)
         output.truncate()
-        command.downgrade(config, "head:0001_initial_tenants", sql=True)
+        command.downgrade(config, "0002_university_infrastructure:0001_initial_tenants", sql=True)
         self.assertNotIn("DROP TABLE users", output.getvalue())
         for table in TABLES:
             self.assertIn(f"DROP TABLE {table}", output.getvalue())
