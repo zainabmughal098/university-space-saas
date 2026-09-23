@@ -1,0 +1,16 @@
+[project]
+name = "university-space-api"
+version = "0.1.0"
+description = "API foundation for a multi-tenant university space management service"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.135,<1.0",
+    "uvicorn>=0.41,<1.0",
+]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

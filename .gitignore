@@ -1,0 +1,38 @@
+# Local configuration and secrets (templates are safe to track)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# JavaScript dependencies and generated output
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+.vercel/
+
+# Python environments and generated output
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Tool caches, logs, and operating-system files
+.cache/
+.npm/
+*.log
+.DS_Store
+Thumbs.db
+.idea/
