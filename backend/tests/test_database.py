@@ -159,7 +159,12 @@ class MigrationTests(unittest.TestCase):
                 context = MigrationContext.configure(connection)
                 with Operations.context(context):
                     migration.upgrade()
+                    spec2 = spec_from_file_location("infrastructure_migration", BACKEND / "alembic/versions/0002_university_infrastructure.py")
+                    infrastructure = module_from_spec(spec2)
+                    spec2.loader.exec_module(infrastructure)
+                    infrastructure.upgrade()
                     self.assertEqual(compare_metadata(context, Base.metadata), [])
+                    infrastructure.downgrade()
                     migration.downgrade()
                 self.assertEqual(connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).all(), [])
         finally:

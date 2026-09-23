@@ -12,6 +12,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 
 from app.database import Base, get_engine
@@ -26,14 +27,16 @@ def validate() -> None:
     try:
         with engine.connect() as connection:
             connection.execute(text("SET TRANSACTION READ ONLY"))
-            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all() == ["0001_initial_tenants"]
-            print("Migration revision: 0001_initial_tenants (head)")
+            head = ScriptDirectory.from_config(config).get_current_head()
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all() == [head]
+            print(f"Migration revision: {head} (head)")
             context = MigrationContext.configure(connection, opts={"compare_server_default": True})
             assert not compare_metadata(context, Base.metadata)
             inspector = inspect(connection)
             for table in Base.metadata.sorted_tables:
-                assert inspector.get_pk_constraint(table.name)["constrained_columns"] == ["id"]
-                assert all(not column["nullable"] for column in inspector.get_columns(table.name))
+                assert inspector.get_pk_constraint(table.name)["constrained_columns"] == list(table.primary_key.columns.keys())
+                for column in inspector.get_columns(table.name):
+                    assert column["nullable"] == table.c[column["name"]].nullable
             for table, columns in [("users", ["email"]), ("workspaces", ["slug"]),
                                    ("memberships", ["user_id", "workspace_id"])]:
                 assert columns in [item["column_names"] for item in inspector.get_unique_constraints(table)]
@@ -55,10 +58,10 @@ def validate() -> None:
             print("Models/schema/defaults, primary/foreign/unique keys, indexes, roles and relationships: PASS")
             rls = connection.execute(text(
                 "SELECT relrowsecurity FROM pg_class JOIN pg_namespace ON pg_namespace.oid = relnamespace "
-                "WHERE nspname = current_schema() AND relname IN ('users', 'workspaces', 'memberships')"
-            )).scalars().all()
-            assert len(rls) == 3 and not any(rls)
-            print("RLS: remains disabled on the three foundation tables")
+                "WHERE nspname = current_schema() AND relname = ANY(:tables)"
+            ), {"tables": list(Base.metadata.tables)}).scalars().all()
+            assert len(rls) == len(Base.metadata.tables) and not any(rls)
+            print("RLS: remains disabled on all application tables")
     finally:
         engine.dispose()
 
