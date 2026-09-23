@@ -16,5 +16,8 @@ dependencies = [
 requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
+[project.optional-dependencies]
+test = ["httpx2>=2.13,<3"]
+
 [tool.setuptools.packages.find]
 include = ["app*"]

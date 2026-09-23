@@ -14,8 +14,10 @@ and RoomFacility. Every infrastructure table includes a required `workspace_id`.
 Composite foreign keys pair that workspace with each referenced parent ID,
 including both ends of RoomFacility. Cross-workspace associations are rejected by
 the database on inserts and updates, including ORM relationship assignments.
-Authorization and PostgreSQL RLS are not implemented; all future queries must
-still filter by the authorized workspace. Foreign keys do not isolate reads.
+The infrastructure API scopes reads and writes to the workspace in its route.
+Authorization and PostgreSQL RLS are not implemented. A workspace identifier is
+not proof of permission: callers can still select any workspace's route until
+authentication and membership authorization are added. Foreign keys do not isolate reads.
 
 ## Infrastructure decisions
 
@@ -38,10 +40,56 @@ still filter by the authorized workspace. Foreign keys do not isolate reads.
   Prefer `is_active` for retirement. Room/facility deletion cascades only to their
   association rows. No cascading deletion of the campus/building/floor hierarchy.
 
-The new revision is `0002_university_infrastructure`, following the unchanged
-`0001_initial_tenants`. **The new migration has not been applied to Supabase.**
-Review it before applying. The live validator and `alembic check` will report a
-pending revision until it is applied in a later authorized step.
+The current revision is `0002_university_infrastructure`, following
+`0001_initial_tenants`. Both were applied and verified in Supabase during earlier
+phases. Phase 2B changes neither the database schema nor the migrations.
+
+## Infrastructure API
+
+Base path: `/api/workspaces/{workspace_id}`. Resources: `campuses`, `buildings`,
+`floors`, `room-types`, `facilities`, and `rooms`. Interactive contracts and all
+request/response schemas are available at `/docs`.
+
+| Method | Path after base | Behavior |
+| --- | --- | --- |
+| POST | `/{resource}` | Create; returns 201 with the resource |
+| GET | `/{resource}` | List; returns 200 with an array |
+| GET | `/{resource}/{id}` | Get one; returns 200 |
+| PATCH | `/{resource}/{id}` | Partial update; returns 200 |
+| POST | `/{resource}/{id}/deactivate` | Set `is_active=false`; campuses, buildings, floors, rooms only |
+| GET | `/rooms/{room_id}/facilities` | List assigned facilities |
+| POST | `/rooms/{room_id}/facilities/{facility_id}` | Assign; returns 201 with the association |
+| DELETE | `/rooms/{room_id}/facilities/{facility_id}` | Remove association only; returns 204 |
+
+Lists accept `limit` (default 100, maximum 200) and `offset` (default 0), ordered
+by creation time and ID. They include active and inactive records. Deactivation
+is idempotent and does not cascade to children; PATCH can reactivate a record.
+Inactive infrastructure may still be referenced. Room types and facilities have
+no active flag, so they have neither deactivation nor deletion endpoints.
+
+PATCH requires at least one field. Only `address` and `description` accept null
+to clear their values; other fields cannot be null. Name/code whitespace is
+trimmed, blank strings are rejected, and uniqueness remains case-sensitive.
+Room capacity is a strict positive integer in PostgreSQL's 32-bit integer range.
+Room facility assignment is separate from room create/update: repeating an
+assignment returns 409, and removing a missing assignment returns 404.
+
+Workspace ownership comes exclusively from the route. Request bodies reject
+`workspace_id`, `id`, `created_at`, and other undeclared fields. Parent references
+are validated in that workspace; database constraints protect against races.
+All lookups and UPDATE/DELETE statements include workspace predicates. Responses
+are Pydantic schemas, without ORM relationships or database diagnostics.
+
+Errors share `{"detail": {"code": "...", "message": "..."}}`:
+
+- 404: missing workspace, resource, or assignment. Foreign-workspace resources
+  are indistinguishable from missing resources.
+- 422: invalid request fields or a parent missing from the selected workspace.
+- 409: duplicate code/name/floor number/assignment, or a concurrent integrity conflict.
+- 503: database failure, with SQL and connection diagnostics suppressed.
+
+The code is separated into `routes.py`, `schemas.py`, `services.py`, and
+`errors.py`; `main.py` composes these and preserves `/health`.
 
 ## Database configuration
 
@@ -65,8 +113,8 @@ credentials in `.env.example`. Process environment variables override `.env`.
 Settings resolve `.env` relative to the backend directory, independent of cwd.
 Placeholder or missing credentials are rejected when database access is requested.
 
-From `backend/` in PowerShell, after setting credentials and approving migration
-application in a later step (do not run upgrade during offline validation):
+For initial database setup only, from `backend/` in PowerShell (the existing
+Supabase development database is already migrated; API tests do not run this):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.lock
@@ -76,7 +124,7 @@ application in a later step (do not run upgrade during offline validation):
 ```
 
 The initial revision is `0001_initial_tenants`. No tables are created at API
-startup. Database access is lazy; future FastAPI endpoints can inject a session
+startup. Database access is lazy; FastAPI endpoints inject a session
 with `Depends(get_session)` from `app.database`. Each dependency owns and closes
 its session; writes require explicit commits and uncommitted work is rolled back.
 `/health` remains a process health endpoint.
@@ -84,6 +132,7 @@ its session; writes require explicit commits and uncommitted work is rolled back
 ## Credential-free checks
 
 ```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-test.lock
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe -m pip check
 .\.venv\Scripts\python.exe -m compileall -q app alembic tests
@@ -94,6 +143,10 @@ Tests use temporary SQLite databases for constraints, relationships, and migrati
 round trips, plus offline PostgreSQL SQL generation and configuration checks with
 fake credentials. They never connect to your PostgreSQL database. SQLite tests do
 not replace validating the migration against the configured Supabase PostgreSQL database.
+API tests override the session dependency with an in-memory SQLite database and
+block production engine/configuration access. No test reads the private `.env`
+or connects to Supabase. `requirements-test.lock` extends the runtime lock with
+the test client dependency; runtime dependencies are unchanged.
 
 For a read-only live schema validation (including `alembic check`), run:
 
@@ -108,3 +161,5 @@ Implementation references: [SQLAlchemy sessions](https://docs.sqlalchemy.org/en/
 and [Alembic migrations](https://alembic.sqlalchemy.org/en/latest/tutorial.html).
 Tenant-aware relationship synchronization follows SQLAlchemy's
 [overlapping foreign key guidance](https://docs.sqlalchemy.org/en/20/orm/join_conditions.html#overlapping-foreign-keys).
+API tests follow [FastAPI dependency overrides](https://fastapi.tiangolo.com/advanced/testing-dependencies/)
+and use the client dependency described in [Starlette testing documentation](https://starlette.dev/testclient/).

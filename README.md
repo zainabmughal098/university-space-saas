@@ -8,8 +8,9 @@ configure its infrastructure; the application is not tied to a specific universi
 
 The Phase 0 applications now include an initial PostgreSQL database foundation:
 SQLAlchemy models for users, university workspaces, and memberships, with Alembic
-migrations. Phase 2A adds tenant-scoped physical infrastructure models and a new,
-unapplied migration. Authentication, read isolation (including RLS), scheduling,
+migrations. Phase 2A's physical infrastructure schema is migrated and verified.
+Phase 2B provides workspace-scoped infrastructure APIs, with no new migration.
+Authentication, database-enforced read isolation (RLS), scheduling,
 reservations, imports, analytics, optimization, and AI are not implemented.
 
 ## Repository and architecture
