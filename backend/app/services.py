@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.errors import APIError
+from app.scheduling import SchedulingService
 
 
 @dataclass(frozen=True)
@@ -75,13 +76,8 @@ class WorkspaceService:
                 if found is None:
                     raise APIError(422, "invalid_parent", f"{field} must reference a resource in this workspace.")
         if resource.model is models.ScheduleEntry:
-            # Compare the resulting interval, including stored values omitted by PATCH.
-            start = values["starts_at"] if "starts_at" in values else record.starts_at
-            end = values["ends_at"] if "ends_at" in values else record.ends_at
-            if schemas.stored_utc(end) <= schemas.stored_utc(start):
-                raise APIError(422, "validation_error", "ends_at must be later than starts_at.")
+            SchedulingService(self.session, self.workspace_id).validate_schedule(values, record)
         if not resource.unique_fields:
-            # Schedule overlaps and duplicate occupancy entries are allowed in this phase.
             return
         query = select(resource.model.id).where(resource.model.workspace_id == self.workspace_id)
         for field in resource.unique_fields:
@@ -105,6 +101,8 @@ class WorkspaceService:
             raise APIError(409, "integrity_conflict", "The change conflicts with existing data or relationships.") from None
 
     def create(self, resource: Resource, payload: BaseModel):
+        if resource.model is models.ScheduleEntry:
+            SchedulingService(self.session, self.workspace_id).lock_workspace()
         values = payload.model_dump()
         self.validate_values(resource, values)
         record = resource.model(workspace_id=self.workspace_id, **values)
@@ -121,6 +119,8 @@ class WorkspaceService:
         return resource.response.model_validate(self.find(resource.model, resource_id))
 
     def update(self, resource: Resource, resource_id: UUID, payload: BaseModel):
+        if resource.model is models.ScheduleEntry:
+            SchedulingService(self.session, self.workspace_id).lock_workspace()
         # Serialize concurrent partial schedule changes before checking the merged interval.
         record = self.find(resource.model, resource_id, lock=resource.model is models.ScheduleEntry)
         values = payload.model_dump(exclude_unset=True)
@@ -144,6 +144,8 @@ class WorkspaceService:
             raise APIError(409, "integrity_conflict", "The change conflicts with existing data or relationships.") from None
 
     def deactivate(self, resource: Resource, resource_id: UUID):
+        if resource.model is models.ScheduleEntry:
+            SchedulingService(self.session, self.workspace_id).lock_workspace()
         self.find(resource.model, resource_id)
         return self.update_values(resource, resource_id, {"is_active": False})
 

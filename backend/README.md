@@ -47,7 +47,7 @@ phases. Phase 2B changes neither the database schema nor the migrations.
 ## Phase 3A academic scheduling data
 
 The current head is `0003_academic_scheduling`, following the unchanged `0002`.
-Migration 0003 was applied and validated before Phase 3B. Phase 3B does not change
+Migration 0003 was applied and validated before Phase 3B. Phase 3C does not change
 models or migrations and does not access Supabase.
 
 The models are Department, Faculty, Course, Section, and ScheduleEntry. Each has
@@ -63,14 +63,14 @@ a teacher record independent of User or authentication.
   `(workspace_id, id)` unique constraints support those references. ORM parent
   assignments do not overwrite explicit workspace ownership.
 - Student counts are required PostgreSQL integers with `CHECK (student_count > 0)`.
-  This phase does not compare enrollment with room capacity.
+  The schedule API also checks enrollment against room capacity.
 - ScheduleEntry represents actual class occupancy during `[starts_at, ends_at)`.
   Both endpoints are required `TIMESTAMP WITH TIME ZONE` values, with
   `CHECK (ends_at > starts_at)`. Callers should supply timezone-aware datetimes;
   PostgreSQL stores instants, not the original timezone identifier.
-- Adjacent intervals are conceptually non-overlapping. Overlapping and duplicate
-  occupancy entries are currently allowed: conflict detection, exclusion
-  constraints, recurrence, reservations, and imports are intentionally deferred.
+- Adjacent intervals are non-overlapping. The API rejects active room, faculty,
+  and section overlaps. The schema has no exclusion constraints; direct SQL can
+  still insert overlaps. Recurrence, reservations, and imports remain deferred.
 - Tenant-first indexes cover faculty/course department lookups and schedule
   lookups by workspace/start, room/start, section/start, and faculty/start.
   Unique indexes also support workspace and course/section lookups.
@@ -88,7 +88,7 @@ SQL generation. SQLite does not preserve PostgreSQL timezone semantics; the
 tests verify timezone-aware column definitions and PostgreSQL DDL, not a live
 PostgreSQL timestamp round trip. No private configuration is needed. The live
 validator's academic inspection helper is tested on disposable connections;
-the live validator itself is not run during Phase 3B.
+the live validator itself is not run during Phase 3C.
 
 ## Phase 3B academic API
 
@@ -119,17 +119,93 @@ aware values directly. The API does not reinterpret times in the workspace timez
 
 The effective interval must satisfy `ends_at > starts_at`, including one-sided
 PATCHes merged with the stored endpoint. Invalid ranges return 422 and leave the
-record unchanged. PostgreSQL row locking serializes partial updates to the same
-entry during this validation. This is not conflict detection between entries.
-Intervals remain `[starts_at, ends_at)`; adjacent, overlapping, and exact duplicate
-schedule entries are all allowed in this phase.
+record unchanged. Schedule mutations also run the Phase 3C checks described below.
+Intervals remain `[starts_at, ends_at)`; adjacent entries are permitted.
 
 Lists use `limit`/`offset` and include inactive records. Deactivation is idempotent,
-does not cascade, and PATCH can reactivate records. Inactive parents remain valid
-references. There are no hard-delete academic endpoints. Room capacity checks,
-recurrence, imports, conflict detection, authentication, and RLS remain deferred.
+does not cascade, and PATCH can reactivate records subject to schedule checks.
+Active schedule entries require active rooms, faculty, and sections; other academic
+parent relationships retain their existing behavior. There are no hard-delete
+academic endpoints. Recurrence, imports, authentication, and RLS remain deferred.
 API tests use isolated SQLite with private configuration and production-engine
 access explicitly blocked. No live PostgreSQL connection is used for this phase.
+
+## Phase 3C conflicts and room availability
+
+`scheduling.py` owns deterministic conflict/capacity checks and availability
+queries. `scheduling_schemas.py` defines their request and response contracts.
+The same overlap predicate is used throughout:
+
+```text
+existing.starts_at < requested.ends_at AND existing.ends_at > requested.starts_at
+```
+
+Only active ScheduleEntry rows in the requested workspace participate. An update
+excludes its own ID and checks the merged record, including reactivation and
+changes to room/faculty/section. A conflicting entry appears once with all matching
+types, ordered by start, end, and ID. HTTP 409 responses contain:
+
+```json
+{
+  "detail": {
+    "code": "schedule_conflict",
+    "message": "The requested schedule overlaps active entries.",
+    "has_conflicts": true,
+    "conflicts": [{
+      "schedule_entry_id": "UUID",
+      "conflict_types": ["room", "faculty", "section"],
+      "room_id": "UUID",
+      "faculty_id": "UUID",
+      "section_id": "UUID",
+      "starts_at": "2026-10-01T07:00:00Z",
+      "ends_at": "2026-10-01T08:00:00Z"
+    }]
+  }
+}
+```
+
+Schedule create/PATCH requires `room.capacity >= section.student_count`, including
+inactive proposals. Failure returns 422 `insufficient_capacity` with both values.
+Active proposals additionally require active room/faculty/section records (422
+`inactive_parent`). Inactive entries neither block occupancy nor undergo overlap
+checks. The dedicated deactivate endpoint can always retire an existing entry,
+even if its parents have subsequently changed. Existing overlaps are not rewritten.
+
+Availability endpoints, relative to `/api/workspaces/{workspace_id}`:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/rooms/availability` | Search active, unoccupied rooms |
+| GET | `/rooms/{room_id}/availability` | Check one room and return conflicting entries |
+
+Both require timezone-aware `starts_at` and `ends_at`, with `ends_at > starts_at`.
+Search optionally accepts `minimum_capacity`, `room_type_id`, and repeated
+`facility_ids` parameters, for example `facility_ids=UUID1&facility_ids=UUID2`.
+A room must contain **all** requested facilities. Duplicate IDs are deduplicated;
+at most 100 facility IDs may be supplied. Missing or foreign-workspace filter IDs
+return 422. Missing or foreign-workspace rooms return 404 without revealing ownership.
+
+Search returns room ID/name/code/capacity, room type, floor/building/campus context,
+and its full facility list. Every relationship query is workspace-scoped. Results
+are ordered by room code and ID, without ranking, with `limit` (default 100,
+maximum 200) and `offset` (default 0). Only the room's active flag is an availability
+filter; ancestor active flags introduce no additional rules in this phase.
+Specific-room checks return `available`, `has_conflicts`, `conflicts`, and a reason
+(`inactive_room`, `schedule_conflict`, or null). A free room may still be unsuitable
+for a particular faculty/section; schedule creation performs those additional checks.
+
+Availability is a read-time snapshot, not a reservation. API schedule writes lock
+the workspace row until commit/rollback, then validate against fresh data under
+PostgreSQL READ COMMITTED. Room/faculty/section rows are also locked while validating.
+This deliberately serializes scheduling writes per university to protect competing
+API requests without a schema change. It does not protect direct SQL writers or
+retroactively revalidate schedules after separate capacity/enrollment/active-flag
+edits. Those changes require re-evaluation when the schedule is next mutated.
+See [PostgreSQL row locking](https://www.postgresql.org/docs/17/explicit-locking.html).
+
+Tests use isolated SQLite databases and inspect generated PostgreSQL locking SQL.
+Actual PostgreSQL contention behavior is not tested against Supabase. No exclusion
+constraints, schema changes, reservations, ranking, or optimization are introduced.
 
 ## Infrastructure API
 
@@ -151,7 +227,7 @@ request/response schemas are available at `/docs`.
 Lists accept `limit` (default 100, maximum 200) and `offset` (default 0), ordered
 by creation time and ID. They include active and inactive records. Deactivation
 is idempotent and does not cascade to children; PATCH can reactivate a record.
-Inactive infrastructure may still be referenced. Room types and facilities have
+Inactive infrastructure may still be referenced outside active schedule proposals. Room types and facilities have
 no active flag, so they have neither deactivation nor deletion endpoints.
 
 PATCH requires at least one field. Only `address` and `description` accept null
@@ -172,7 +248,8 @@ Errors share `{"detail": {"code": "...", "message": "..."}}`:
 - 404: missing workspace, resource, or assignment. Foreign-workspace resources
   are indistinguishable from missing resources.
 - 422: invalid request fields or a parent missing from the selected workspace.
-- 409: duplicate code/name/floor number/assignment, or a concurrent integrity conflict.
+- 409: duplicate code/name/floor number/assignment, a concurrent integrity conflict,
+  or a schedule conflict (with the additional structured fields shown above).
 - 503: database failure, with SQL and connection diagnostics suppressed.
 
 The code is separated into `routes.py`, `schemas.py`, `services.py`, and

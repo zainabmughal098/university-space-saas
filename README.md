@@ -12,7 +12,8 @@ migrations. Phase 2A's physical infrastructure schema is migrated and verified.
 Phase 2B provides workspace-scoped infrastructure APIs, with no new migration.
 Phase 3A's `0003_academic_scheduling` migration has been applied and validated.
 Phase 3B provides workspace-scoped academic and schedule-entry APIs.
-Authentication, database-enforced read isolation (RLS), conflict detection,
+Phase 3C adds deterministic schedule conflict/capacity validation and room availability.
+Authentication, database-enforced read isolation (RLS),
 reservations, imports, analytics, optimization, and AI are not implemented.
 
 ## Repository and architecture

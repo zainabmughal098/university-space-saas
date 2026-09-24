@@ -22,7 +22,7 @@ PARENTS = [("faculty", "department_id", "departments"), ("courses", "department_
            ("schedule-entries", "section_id", "sections"), ("schedule-entries", "faculty_id", "faculty")]
 
 
-class AcademicAPITests(unittest.TestCase):
+class AcademicAPIFixture:
     def setUp(self):
         self.engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         event.listen(self.engine, "connect", lambda connection, _: connection.execute("PRAGMA foreign_keys=ON"))
@@ -54,7 +54,7 @@ class AcademicAPITests(unittest.TestCase):
                 building = Building(workspace_id=workspace.id, campus=campus, name="Building", code="B")
                 floor = Floor(workspace_id=workspace.id, building=building, name="Floor", floor_number=1)
                 room_type = RoomType(workspace_id=workspace.id, name="Type")
-                room = Room(workspace_id=workspace.id, floor=floor, room_type=room_type, name="Room", code="R", capacity=10)
+                room = Room(workspace_id=workspace.id, floor=floor, room_type=room_type, name="Room", code="R", capacity=30)
                 session.add_all([campus, building, floor, room_type, room])
                 session.flush()
                 self.data[wid] = {"rooms": {"id": str(room.id)}}
@@ -97,6 +97,8 @@ class AcademicAPITests(unittest.TestCase):
     def change(self, resource):
         return {"ends_at": "2026-10-01T09:00:00Z"} if resource == "schedule-entries" else {"name": "Changed"}
 
+
+class AcademicAPITests(AcademicAPIFixture, unittest.TestCase):
     def test_create_list_get_patch_all_resources(self):
         for resource in RESOURCES:
             with self.subTest(resource=resource):
@@ -225,6 +227,7 @@ class AcademicAPITests(unittest.TestCase):
                 self.error(self.client.patch(self.item("schedule-entries"), json={field: value}), 422)
 
     def test_timezone_serialization_and_offset_ordering(self):
+        self.assertEqual(self.client.post(self.item("schedule-entries") + "/deactivate").status_code, 200)
         payload = self.payload(self.a, "schedule-entries") | {
             "starts_at": "2026-10-01T13:15:00.123456+05:45",  # 07:30 UTC
             "ends_at": "2026-10-01T04:00:00.654321-04:00",  # 08:00 UTC
@@ -245,16 +248,19 @@ class AcademicAPITests(unittest.TestCase):
         self.assertEqual(result.status_code, 200, result.text)
         self.assertEqual(result.json()["ends_at"], "2026-10-01T08:15:00Z")
 
-    def test_overlaps_duplicates_and_adjacent_intervals_allowed(self):
+    def test_overlaps_rejected_and_adjacent_intervals_allowed(self):
         base = self.payload(self.a, "schedule-entries")
-        for values in [{}, {"starts_at": "2026-10-01T07:15:00Z"},
-                       {"starts_at": "2026-10-01T08:00:00Z", "ends_at": "2026-10-01T09:00:00Z"}]:
+        for values in [{}, {"starts_at": "2026-10-01T07:15:00Z"}]:
             result = self.client.post(self.url(self.a, "schedule-entries"), json=base | values)
-            self.assertEqual(result.status_code, 201, result.text)
-            result = self.client.patch(self.url(self.a, "schedule-entries", result.json()["id"]),
-                                       json={"starts_at": "2026-10-01T07:00:00Z", "ends_at": "2026-10-01T08:00:00Z"})
-            self.assertEqual(result.status_code, 200, result.text)
-        self.assertEqual(len(self.client.get(self.url(self.a, "schedule-entries")).json()), 4)
+            self.assertEqual(result.status_code, 409, result.text)
+            self.assertTrue(result.json()["detail"]["has_conflicts"])
+        result = self.client.post(self.url(self.a, "schedule-entries"), json=base | {
+            "starts_at": "2026-10-01T08:00:00Z", "ends_at": "2026-10-01T09:00:00Z"})
+        self.assertEqual(result.status_code, 201, result.text)
+        result = self.client.patch(self.url(self.a, "schedule-entries", result.json()["id"]),
+                                   json={"starts_at": "2026-10-01T07:00:00Z", "ends_at": "2026-10-01T08:00:00Z"})
+        self.assertEqual(result.status_code, 409, result.text)
+        self.assertEqual(len(self.client.get(self.url(self.a, "schedule-entries")).json()), 2)
 
     def test_reject_ownership_fields_empty_null_unknown_patches(self):
         for resource in RESOURCES:
@@ -284,6 +290,7 @@ class AcademicAPITests(unittest.TestCase):
         event.listen(self.engine, "before_cursor_execute", capture)
         for resource in RESOURCES:
             self.assertEqual(self.client.patch(self.item(resource), json=self.change(resource)).status_code, 200)
+        for resource in RESOURCES:
             self.assertEqual(self.client.post(self.item(resource) + "/deactivate").status_code, 200)
         writes = [sql for sql in statements if sql.startswith("UPDATE")]
         self.assertEqual(len(writes), 10)

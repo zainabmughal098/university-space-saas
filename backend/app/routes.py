@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from app.database import get_session
 from app.schemas import ErrorResponse, FacilityRead, RoomFacilityRead
 from app.services import WorkspaceService, RESOURCES, Resource
+from app.scheduling import SchedulingService
+from app.scheduling_schemas import (AvailabilityQuery, AvailableRoom, IntervalQuery,
+                                    RoomAvailability, ScheduleConflictResponse)
 
 router = APIRouter(prefix="/api/workspaces/{workspace_id}", responses={
     status: {"model": ErrorResponse} for status in (404, 409, 422, 503)
@@ -22,6 +25,17 @@ def get_service(workspace_id: UUID, session: Annotated[Session, Depends(get_sess
 Service = Annotated[WorkspaceService, Depends(get_service)]
 Limit = Annotated[int, Query(ge=1, le=200)]
 Offset = Annotated[int, Query(ge=0)]
+
+
+# Register the literal availability path before /rooms/{resource_id}.
+@router.get("/rooms/availability", response_model=list[AvailableRoom], tags=["availability"])
+def available_rooms(service: Service, query: Annotated[AvailabilityQuery, Query()]):
+    return SchedulingService(service.session, service.workspace_id).available_rooms(query)
+
+
+@router.get("/rooms/{room_id}/availability", response_model=RoomAvailability, tags=["availability"])
+def room_availability(room_id: UUID, service: Service, query: Annotated[IntervalQuery, Query()]):
+    return SchedulingService(service.session, service.workspace_id).room_availability(room_id, query)
 
 
 def register_resource(path: str, resource: Resource) -> None:
@@ -52,7 +66,9 @@ def register_resource(path: str, resource: Resource) -> None:
         ("/{resource_id}", update, "PATCH", 200, resource.response),
     ]:
         router.add_api_route(f"/{path}{suffix}", endpoint, methods=[method], status_code=status,
-                             response_model=response, name=f"{method.lower()}_{path}", tags=[path])
+                             response_model=response, name=f"{method.lower()}_{path}", tags=[path],
+                             responses={409: {"model": ScheduleConflictResponse | ErrorResponse}}
+                             if path == "schedule-entries" and method in {"POST", "PATCH"} else {})
     if resource.active:
         router.add_api_route(f"/{path}/{{resource_id}}/deactivate", deactivate, methods=["POST"],
                              response_model=resource.response, name=f"deactivate_{path}", tags=[path])

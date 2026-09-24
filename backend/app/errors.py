@@ -8,8 +8,8 @@ from starlette.exceptions import HTTPException
 
 
 class APIError(HTTPException):
-    def __init__(self, status_code: int, code: str, message: str):
-        super().__init__(status_code, detail={"code": code, "message": message})
+    def __init__(self, status_code: int, code: str, message: str, *, details: dict | None = None):
+        super().__init__(status_code, detail={"code": code, "message": message, **(details or {})})
 
 
 def register_error_handlers(app: FastAPI) -> None:
