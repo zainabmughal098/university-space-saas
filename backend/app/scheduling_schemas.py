@@ -38,9 +38,17 @@ class ScheduleConflict(BaseModel):
     ends_at: StoredTime
 
 
+class ReservationConflict(BaseModel):
+    reservation_id: UUID
+    room_id: UUID
+    starts_at: StoredTime
+    ends_at: StoredTime
+
+
 class ConflictResult(BaseModel):
     has_conflicts: bool
     conflicts: list[ScheduleConflict]
+    reservation_conflicts: list[ReservationConflict] = Field(default_factory=list)
 
 
 class ScheduleConflictDetail(ErrorDetail, ConflictResult):
@@ -64,4 +72,4 @@ class RoomAvailability(ConflictResult):
     starts_at: StoredTime
     ends_at: StoredTime
     available: bool
-    reason: Literal["inactive_room", "schedule_conflict"] | None = None
+    reason: Literal["inactive_room", "schedule_conflict", "reservation_conflict", "schedule_and_reservation_conflict"] | None = None

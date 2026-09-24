@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.errors import APIError
 from app.scheduling_schemas import (AvailabilityQuery, AvailableRoom, ConflictResult,
-                                    IntervalQuery, RoomAvailability, ScheduleConflict)
+                                    IntervalQuery, RoomAvailability, ScheduleConflict, ReservationConflict)
 
 
 class SchedulingService:
@@ -41,8 +41,7 @@ class SchedulingService:
         return record
 
     @staticmethod
-    def overlap(starts_at: datetime, ends_at: datetime):
-        entry = models.ScheduleEntry
+    def overlap(starts_at: datetime, ends_at: datetime, entry=models.ScheduleEntry):
         return and_(entry.starts_at < ends_at, entry.ends_at > starts_at)
 
     def conflicts(self, starts_at: datetime, ends_at: datetime, *, room_id: UUID | None = None,
@@ -66,7 +65,25 @@ class SchedulingService:
             room_id=row.room_id, faculty_id=row.faculty_id, section_id=row.section_id,
             starts_at=row.starts_at, ends_at=row.ends_at,
         ) for row in rows]
-        return ConflictResult(has_conflicts=bool(conflicts), conflicts=conflicts)
+        reservations = self.reservation_conflicts(starts_at, ends_at, room_id) if room_id is not None else []
+        return ConflictResult(has_conflicts=bool(conflicts or reservations), conflicts=conflicts,
+                              reservation_conflicts=reservations)
+
+    def reservation_conflicts(self, starts_at, ends_at, room_id):
+        model = models.Reservation
+        rows = self.session.scalars(select(model).where(
+            model.workspace_id == self.workspace_id, model.room_id == room_id,
+            model.status == models.ReservationStatus.APPROVED, self.overlap(starts_at, ends_at, model),
+        ).order_by(model.starts_at, model.ends_at, model.id))
+        return [ReservationConflict(reservation_id=row.id, room_id=row.room_id,
+                                    starts_at=row.starts_at, ends_at=row.ends_at) for row in rows]
+
+    @staticmethod
+    def reject_conflicts(result):
+        if result.has_conflicts:
+            code = "schedule_conflict" if result.conflicts else "reservation_conflict"
+            raise APIError(409, code, "The requested interval overlaps existing room or schedule occupancy.",
+                           details=result.model_dump(mode="json"))
 
     def validate_schedule(self, values: dict, record=None) -> None:
         """Validate the merged proposal after the caller locks this workspace."""
@@ -88,9 +105,7 @@ class SchedulingService:
                 raise APIError(422, "inactive_parent", f"An active schedule entry requires an active {name}.")
         result = self.conflicts(start, end, room_id=room.id, faculty_id=faculty.id, section_id=section.id,
                                 exclude_id=record.id if record is not None else None)
-        if result.has_conflicts:
-            raise APIError(409, "schedule_conflict", "The requested schedule overlaps active entries.",
-                           details=result.model_dump(mode="json"))
+        self.reject_conflicts(result)
 
     def available_rooms(self, query: AvailabilityQuery) -> list[AvailableRoom]:
         if query.room_type_id is not None:
@@ -108,6 +123,12 @@ class SchedulingService:
             entry.workspace_id == self.workspace_id, entry.room_id == room.id,
             entry.is_active.is_(True), self.overlap(query.starts_at, query.ends_at),
         ))
+        reservation = models.Reservation
+        reserved = exists(select(reservation.id).where(
+            reservation.workspace_id == self.workspace_id, reservation.room_id == room.id,
+            reservation.status == models.ReservationStatus.APPROVED,
+            self.overlap(query.starts_at, query.ends_at, reservation),
+        ))
         statement = select(room, room_type, floor, building, campus).join(room_type, and_(
             room.room_type_id == room_type.id, room.workspace_id == room_type.workspace_id,
         )).join(floor, and_(room.floor_id == floor.id, room.workspace_id == floor.workspace_id)).join(
@@ -115,7 +136,7 @@ class SchedulingService:
         ).join(campus, and_(building.campus_id == campus.id, building.workspace_id == campus.workspace_id)).where(
             room.workspace_id == self.workspace_id, room_type.workspace_id == self.workspace_id,
             floor.workspace_id == self.workspace_id, building.workspace_id == self.workspace_id,
-            campus.workspace_id == self.workspace_id, room.is_active.is_(True), ~occupied,
+            campus.workspace_id == self.workspace_id, room.is_active.is_(True), ~occupied, ~reserved,
         )
         if query.minimum_capacity is not None:
             statement = statement.where(room.capacity >= query.minimum_capacity)
@@ -151,5 +172,8 @@ class SchedulingService:
         result = self.conflicts(interval.starts_at, interval.ends_at, room_id=room.id)
         return RoomAvailability(room_id=room.id, starts_at=interval.starts_at, ends_at=interval.ends_at,
                                 available=room.is_active and not result.has_conflicts,
-                                reason="inactive_room" if not room.is_active else "schedule_conflict" if result.has_conflicts else None,
+                                reason=("inactive_room" if not room.is_active else
+                                        "schedule_and_reservation_conflict" if result.conflicts and result.reservation_conflicts else
+                                        "schedule_conflict" if result.conflicts else
+                                        "reservation_conflict" if result.reservation_conflicts else None),
                                 **result.model_dump())

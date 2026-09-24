@@ -46,7 +46,7 @@ phases. Phase 2B changes neither the database schema nor the migrations.
 
 ## Phase 3A academic scheduling data
 
-The current head is `0003_academic_scheduling`, following the unchanged `0002`.
+The academic revision is `0003_academic_scheduling`, following the unchanged `0002`.
 Migration 0003 was applied and validated before Phase 3B. Phase 3C does not change
 models or migrations and does not access Supabase.
 
@@ -70,7 +70,7 @@ a teacher record independent of User or authentication.
   PostgreSQL stores instants, not the original timezone identifier.
 - Adjacent intervals are non-overlapping. The API rejects active room, faculty,
   and section overlaps. The schema has no exclusion constraints; direct SQL can
-  still insert overlaps. Recurrence, reservations, and imports remain deferred.
+  still insert overlaps. Recurrence and imports remain deferred.
 - Tenant-first indexes cover faculty/course department lookups and schedule
   lookups by workspace/start, room/start, section/start, and faculty/start.
   Unique indexes also support workspace and course/section lookups.
@@ -205,7 +205,73 @@ See [PostgreSQL row locking](https://www.postgresql.org/docs/17/explicit-locking
 
 Tests use isolated SQLite databases and inspect generated PostgreSQL locking SQL.
 Actual PostgreSQL contention behavior is not tested against Supabase. No exclusion
-constraints, schema changes, reservations, ranking, or optimization are introduced.
+constraints, ranking, or optimization are introduced by Phase 3C.
+
+## Phase 3D reservations and approval
+
+The new head is `0004_room_reservations`; migrations 0001–0003 are unchanged.
+0004 has been validated offline and in isolated SQLite databases, but has **not**
+been applied to Supabase. Apply it separately before using these endpoints.
+
+Reservation has a UUID primary key, workspace ownership, room, requester, title,
+optional description, aware start/end timestamps, positive expected attendees,
+status, optional reviewer/review time/rejection reason, and created/updated times.
+Database checks enforce positive duration/count, the four statuses, paired review
+metadata, and a reviewer for approved/rejected records. Composite foreign keys
+bind the room and requester/reviewer memberships to the reservation's workspace.
+Referenced memberships cannot be deleted while reservation history needs them;
+deactivate them instead. Indexes support workspace/status, workspace/room/start,
+requester/workspace, and reviewer/workspace queries. Capacity is checked by the
+service at creation and approval. Updated time is maintained by ORM/service writes.
+
+All paths below start with `/api/workspaces/{workspace_id}/reservations`:
+
+| Method | Suffix | Behavior |
+| --- | --- | --- |
+| POST | (none) | Create pending request, 201 |
+| GET | (none) | List with optional status, room_id, requested_by_user_id, limit/offset |
+| GET | `/{reservation_id}` | Retrieve scoped reservation |
+| POST | `/{reservation_id}/approve` | Approve after fresh occupancy checks |
+| POST | `/{reservation_id}/reject` | Reject with optional rejection_reason |
+| POST | `/{reservation_id}/cancel` | Cancel and release occupancy |
+
+Create accepts `room_id`, `requested_by_user_id`, `title`, optional `description`,
+`starts_at`, `ends_at`, and `expected_attendees`. Review actions require
+`reviewed_by_user_id`. Bodies reject ownership, status, audit timestamps, and other
+undeclared fields. Cancellation has no request body. There is no PATCH/delete API.
+
+Allowed transitions are pending → approved/rejected/cancelled and approved →
+cancelled. Repeated or unsupported transitions return 409. Cancellation preserves
+prior review metadata. Requesters at creation/approval and reviewers must have
+active workspace memberships; any membership role is accepted during this phase.
+Identity is **not authenticated**: explicit IDs are unverified claims, and callers
+can select any workspace route. Cancellation has neither caller authorization nor
+a cancellation-actor audit field. Authentication and permission enforcement remain
+deferred; these APIs must not be treated as a production authorization boundary.
+
+Pending requests do not reserve rooms. Creation rejects active class overlaps but
+allows overlap with approved reservations; approval then checks both sources.
+Approval also rechecks active room/requester membership and capacity. Active class
+creation, updates, and reactivation reject approved reservation overlaps. All use
+`[starts_at, ends_at)`, so back-to-back bookings remain valid.
+
+Availability search excludes approved reservations. Specific-room checks retain
+`conflicts` for schedules and add `reservation_conflicts` containing scoped
+reservation ID, room ID, and times. `reason` distinguishes `schedule_conflict`,
+`reservation_conflict`, and `schedule_and_reservation_conflict` (plus the existing
+inactive-room reason). Pending/rejected/cancelled requests never block availability.
+Booking conflicts return structured 409 responses using the same conflict arrays;
+invalid inputs/references/capacity return 422 and missing scoped resources return 404.
+
+Reservation mutations and schedule mutations share the existing workspace-row
+`SELECT ... FOR UPDATE` lock until commit/rollback. Under PostgreSQL READ COMMITTED,
+competing writers wait before reading occupancy, then see the previous writer's
+committed approval/class. Reservation rows and relevant memberships/rooms are also
+locked. This serializes booking writes per university, including cancellation;
+it trades throughput for a simple shared ordering. It does not protect direct SQL
+writers, or retroactively validate later room-capacity changes. Tests verify lock
+SQL/order and rollback with isolated SQLite; real PostgreSQL contention has not
+been exercised. No Supabase connection or private `.env` access was used.
 
 ## Infrastructure API
 
@@ -277,8 +343,8 @@ credentials in `.env.example`. Process environment variables override `.env`.
 Settings resolve `.env` relative to the backend directory, independent of cwd.
 Placeholder or missing credentials are rejected when database access is requested.
 
-For initial database setup only, from `backend/` in PowerShell (the existing
-Supabase development database is already migrated; API tests do not run this):
+For a separately authorized database setup/migration, from `backend/` in PowerShell
+(Supabase has 0001–0003; 0004 is pending and API tests do not run this):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.lock

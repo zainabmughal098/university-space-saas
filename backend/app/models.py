@@ -351,3 +351,49 @@ class ScheduleEntry(AcademicRecord, Base):
         primaryjoin="and_(ScheduleEntry.workspace_id == Faculty.workspace_id, foreign(ScheduleEntry.faculty_id) == Faculty.id)",
         back_populates="schedule_entries",
     )
+
+
+class ReservationStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+class Reservation(Base):
+    """Ad-hoc [starts_at, ends_at) booking; membership FKs preserve tenant identity."""
+    __tablename__ = "reservations"
+    __table_args__ = (
+        ForeignKeyConstraint(["workspace_id", "room_id"], ["rooms.workspace_id", "rooms.id"]),
+        ForeignKeyConstraint(["requested_by_user_id", "workspace_id"], ["memberships.user_id", "memberships.workspace_id"]),
+        ForeignKeyConstraint(["reviewed_by_user_id", "workspace_id"], ["memberships.user_id", "memberships.workspace_id"]),
+        CheckConstraint("ends_at > starts_at", name="positive_interval"),
+        CheckConstraint("expected_attendees > 0", name="positive_attendees"),
+        CheckConstraint("(reviewed_by_user_id IS NULL AND reviewed_at IS NULL) OR (reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL)", name="review_pair"),
+        CheckConstraint("status NOT IN ('approved', 'rejected') OR reviewed_by_user_id IS NOT NULL", name="review_required"),
+        Index("ix_reservations_workspace_status", "workspace_id", "status"),
+        Index("ix_reservations_workspace_room_start", "workspace_id", "room_id", "starts_at"),
+        Index("ix_reservations_requester_workspace", "requested_by_user_id", "workspace_id"),
+        Index("ix_reservations_reviewer_workspace", "reviewed_by_user_id", "workspace_id"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"))
+    room_id: Mapped[uuid.UUID] = mapped_column()
+    requested_by_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expected_attendees: Mapped[int] = mapped_column(Integer)
+    status: Mapped[ReservationStatus] = mapped_column(Enum(
+        ReservationStatus, values_callable=lambda values: [value.value for value in values],
+        native_enum=False, create_constraint=True, validate_strings=True, name="reservation_status",
+    ), default=ReservationStatus.PENDING, server_default="pending")
+    reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    room: Mapped[Room] = relationship(primaryjoin="and_(Reservation.workspace_id == Room.workspace_id, foreign(Reservation.room_id) == Room.id)")
+    requester: Mapped[User] = relationship(foreign_keys=[requested_by_user_id])
+    reviewer: Mapped[User | None] = relationship(foreign_keys=[reviewed_by_user_id])

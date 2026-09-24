@@ -13,8 +13,11 @@ Phase 2B provides workspace-scoped infrastructure APIs, with no new migration.
 Phase 3A's `0003_academic_scheduling` migration has been applied and validated.
 Phase 3B provides workspace-scoped academic and schedule-entry APIs.
 Phase 3C adds deterministic schedule conflict/capacity validation and room availability.
+Phase 3D adds room reservation requests, approval/rejection/cancellation, and shared
+room occupancy checks. Migration `0004_room_reservations` is prepared but has not
+been applied to Supabase.
 Authentication, database-enforced read isolation (RLS),
-reservations, imports, analytics, optimization, and AI are not implemented.
+imports, analytics, optimization, and AI are not implemented.
 
 ## Repository and architecture
 

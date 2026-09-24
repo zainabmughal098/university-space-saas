@@ -10,7 +10,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import DateTime, Integer, create_engine, event, inspect, select
+from sqlalchemy import DateTime, Integer, MetaData, create_engine, event, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -189,23 +189,27 @@ class AcademicTests(unittest.TestCase):
     def test_migration_consistency_roundtrip_and_phase2_data_preserved(self):
         self.session.close()
         third = migration(REVISIONS[-1])
+        phase3 = MetaData()
+        for table in Base.metadata.sorted_tables:
+            if table.name != "reservations":
+                table.to_metadata(phase3)
         with self.engine.begin() as connection:
             context = MigrationContext.configure(connection)
-            self.assertEqual(compare_metadata(context, Base.metadata), [])
+            self.assertEqual(compare_metadata(context, phase3), [])
             validate_academic_schema(connection)
             with Operations.context(context):
                 third.downgrade()
-                self.assertEqual(set(inspect(connection).get_table_names()), set(Base.metadata.tables) - ACADEMIC)
+                self.assertEqual(set(inspect(connection).get_table_names()), set(phase3.tables) - ACADEMIC)
                 self.assertEqual(len(connection.execute(select(Room)).all()), 2)
                 self.assertEqual(len(connection.execute(select(Workspace)).all()), 2)
                 third.upgrade()
-            self.assertEqual(compare_metadata(context, Base.metadata), [])
+            self.assertEqual(compare_metadata(context, phase3), [])
             validate_academic_schema(connection)
 
     def test_incremental_postgresql_sql(self):
         output = io.StringIO()
         config = Config(str(BACKEND / "alembic.ini"), output_buffer=output)
-        command.upgrade(config, "0002_university_infrastructure:head", sql=True)
+        command.upgrade(config, "0002_university_infrastructure:0003_academic_scheduling", sql=True)
         sql = output.getvalue()
         self.assertEqual(sql.count("CREATE TABLE "), 5)
         for table in ACADEMIC:
@@ -221,6 +225,6 @@ class AcademicTests(unittest.TestCase):
             self.assertIn(f"FOREIGN KEY(workspace_id, {column}) REFERENCES {target_table} (workspace_id, id)", sql)
         output.seek(0)
         output.truncate()
-        command.downgrade(config, "head:0002_university_infrastructure", sql=True)
+        command.downgrade(config, "0003_academic_scheduling:0002_university_infrastructure", sql=True)
         self.assertEqual(output.getvalue().count("DROP TABLE "), 5)
         self.assertNotIn("DROP TABLE rooms", output.getvalue())
