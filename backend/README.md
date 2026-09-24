@@ -322,8 +322,9 @@ The code is separated into `routes.py`, `schemas.py`, `services.py`, and
 
 ## Phase 4A local frontend connection
 
-The Next.js dashboard reads existing workspace-scoped list endpoints. Local CORS
-allows only `http://localhost:3000` and `http://127.0.0.1:3000`, with GET access and
+The Next.js dashboard reads existing workspace-scoped list endpoints. Phase 4B
+Spaces uses the existing infrastructure mutation endpoints. Local CORS
+allows only `http://localhost:3000` and `http://127.0.0.1:3000`, with GET/POST/PATCH/DELETE access and
 no credentialed browser requests. No new data endpoints or migrations were added.
 CORS is not authorization; workspace selection and user identity remain unverified.
 Production origins must be configured explicitly when deployment is introduced.

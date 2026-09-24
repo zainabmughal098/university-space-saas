@@ -16,6 +16,8 @@ Phase 3C adds deterministic schedule conflict/capacity validation and room avail
 Phase 3D adds room reservation requests, approval/rejection/cancellation, and shared
 room occupancy checks. Migration `0004_room_reservations` has been applied and validated.
 Phase 4A adds a workspace dashboard with real API data and navigation placeholders.
+Phase 4B adds Spaces management: campuses, buildings, floors, room types, facilities,
+rooms, and room-facility assignments. See [Spaces usage](frontend/README.md).
 Authentication, database-enforced read isolation (RLS),
 imports, analytics, optimization, and AI are not implemented.
 
@@ -78,7 +80,7 @@ py -3.14 -m venv .venv
 
 The API runs at http://127.0.0.1:8000. Process health is available at `/health`,
 and interactive API documentation at `/docs`. The frontend dashboard reads this API.
-Local CORS allows GET requests from localhost/127.0.0.1 on port 3000 only.
+Local CORS allows GET/POST/PATCH/DELETE from localhost/127.0.0.1 on port 3000 only.
 See [frontend setup and workspace selection](frontend/README.md).
 
 Basic import check, from `backend/`:

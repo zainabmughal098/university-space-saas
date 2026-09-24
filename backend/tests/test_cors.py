@@ -12,12 +12,13 @@ class CORSTests(unittest.TestCase):
                 self.assertEqual(response.json(), {"status": "ok"})
                 self.assertEqual(response.headers["access-control-allow-origin"], origin)
                 self.assertNotIn("access-control-allow-credentials", response.headers)
-                preflight = client.options("/health", headers={"Origin": origin, "Access-Control-Request-Method": "GET"})
-                self.assertEqual(preflight.status_code, 200)
+                for method in ["GET", "POST", "PATCH", "DELETE"]:
+                    preflight = client.options("/health", headers={"Origin": origin, "Access-Control-Request-Method": method})
+                    self.assertEqual(preflight.status_code, 200)
 
-    def test_other_origins_and_write_preflights_rejected(self):
+    def test_other_origins_and_unsupported_methods_rejected(self):
         with TestClient(app) as client:
-            for origin, method in [("https://untrusted.example", "GET"), ("http://localhost:3000", "POST")]:
+            for origin, method in [("https://untrusted.example", "GET"), ("https://untrusted.example", "PATCH"), ("http://localhost:3000", "PUT")]:
                 response = client.options("/health", headers={"Origin": origin, "Access-Control-Request-Method": method})
                 self.assertEqual(response.status_code, 400)
             response = client.get("/health", headers={"Origin": "https://untrusted.example"})
