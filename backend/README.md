@@ -210,8 +210,7 @@ constraints, ranking, or optimization are introduced by Phase 3C.
 ## Phase 3D reservations and approval
 
 The new head is `0004_room_reservations`; migrations 0001–0003 are unchanged.
-0004 has been validated offline and in isolated SQLite databases, but has **not**
-been applied to Supabase. Apply it separately before using these endpoints.
+0004 has been applied and validated in Supabase following Phase 3D.
 
 Reservation has a UUID primary key, workspace ownership, room, requester, title,
 optional description, aware start/end timestamps, positive expected attendees,
@@ -321,7 +320,17 @@ Errors share `{"detail": {"code": "...", "message": "..."}}`:
 The code is separated into `routes.py`, `schemas.py`, `services.py`, and
 `errors.py`; `main.py` composes these and preserves `/health`.
 
-## Database configuration
+## Phase 4A local frontend connection
+
+The Next.js dashboard reads existing workspace-scoped list endpoints. Local CORS
+allows only `http://localhost:3000` and `http://127.0.0.1:3000`, with GET access and
+no credentialed browser requests. No new data endpoints or migrations were added.
+CORS is not authorization; workspace selection and user identity remain unverified.
+Production origins must be configured explicitly when deployment is introduced.
+See [frontend configuration](../frontend/README.md) for the public API base URL,
+development workspace selector, and run commands.
+
+## Database connection settings
 
 Supabase-hosted PostgreSQL is the primary development database. Local PostgreSQL
 is not required. The backend continues to use SQLAlchemy, psycopg, Alembic, and
@@ -344,7 +353,7 @@ Settings resolve `.env` relative to the backend directory, independent of cwd.
 Placeholder or missing credentials are rejected when database access is requested.
 
 For a separately authorized database setup/migration, from `backend/` in PowerShell
-(Supabase has 0001–0003; 0004 is pending and API tests do not run this):
+(Supabase has 0001–0004; API tests do not run this):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.lock

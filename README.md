@@ -14,8 +14,8 @@ Phase 3A's `0003_academic_scheduling` migration has been applied and validated.
 Phase 3B provides workspace-scoped academic and schedule-entry APIs.
 Phase 3C adds deterministic schedule conflict/capacity validation and room availability.
 Phase 3D adds room reservation requests, approval/rejection/cancellation, and shared
-room occupancy checks. Migration `0004_room_reservations` is prepared but has not
-been applied to Supabase.
+room occupancy checks. Migration `0004_room_reservations` has been applied and validated.
+Phase 4A adds a workspace dashboard with real API data and navigation placeholders.
 Authentication, database-enforced read isolation (RLS),
 imports, analytics, optimization, and AI are not implemented.
 
@@ -53,6 +53,7 @@ From the repository root:
 ```powershell
 cd frontend
 npm ci
+# If absent, copy .env.example to .env.local; see frontend/README.md.
 npm run dev
 ```
 
@@ -76,8 +77,9 @@ py -3.14 -m venv .venv
 ```
 
 The API runs at http://127.0.0.1:8000. Process health is available at `/health`,
-and interactive API documentation at `/docs`. No frontend/API integration is
-wired yet, so cross-origin middleware is not needed in this phase.
+and interactive API documentation at `/docs`. The frontend dashboard reads this API.
+Local CORS allows GET requests from localhost/127.0.0.1 on port 3000 only.
+See [frontend setup and workspace selection](frontend/README.md).
 
 Basic import check, from `backend/`:
 
