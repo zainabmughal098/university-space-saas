@@ -67,6 +67,12 @@ class WorkspaceService:
             raise APIError(404, "resource_not_found", "Resource not found in this workspace.")
         return record
 
+    def metadata(self):
+        record = self.session.scalar(select(models.Workspace).where(models.Workspace.id == self.workspace_id))
+        if record is None:
+            raise APIError(404, "workspace_not_found", "Workspace not found.")
+        return schemas.WorkspaceRead.model_validate(record)
+
     def validate_values(self, resource: Resource, values: dict, record=None):
         for field, parent in resource.parents:
             if field in values:

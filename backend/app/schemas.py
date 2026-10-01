@@ -114,6 +114,15 @@ class RecordRead(BaseModel):
     created_at: datetime
 
 
+class WorkspaceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    name: str
+    slug: str
+    default_timezone: str
+    created_at: datetime
+
+
 class CampusRead(RecordRead):
     code: str
     address: str | None

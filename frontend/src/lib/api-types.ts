@@ -16,6 +16,17 @@ export interface ScheduleEntry extends RecordRead {
   room_id: string; section_id: string; faculty_id: string;
   starts_at: string; ends_at: string; is_active: boolean;
 }
+export interface WorkspaceRead { id: string; name: string; slug: string; default_timezone: string; created_at: string }
+export type ScheduleInput = Omit<ScheduleEntry, "id" | "workspace_id" | "created_at">;
+export interface ScheduleConflict {
+  schedule_entry_id: string; conflict_types: ("room" | "faculty" | "section")[];
+  room_id: string; faculty_id: string; section_id: string; starts_at: string; ends_at: string;
+}
+export interface ReservationConflict { reservation_id: string; room_id: string; starts_at: string; ends_at: string }
+export interface APIErrorDetail {
+  code: string; message: string; has_conflicts?: boolean;
+  conflicts?: ScheduleConflict[]; reservation_conflicts?: ReservationConflict[];
+}
 export interface Reservation extends RecordRead {
   room_id: string; requested_by_user_id: string; title: string; description: string | null;
   starts_at: string; ends_at: string; expected_attendees: number;

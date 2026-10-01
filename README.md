@@ -20,6 +20,8 @@ Phase 4B adds Spaces management: campuses, buildings, floors, room types, facili
 rooms, and room-facility assignments. See [Spaces usage](frontend/README.md).
 Phase 4C adds Academic management for departments, faculty, courses, and sections,
 with workspace-scoped forms and human-readable parent selectors.
+Phase 4D adds chronological schedule management, workspace-local time entry,
+relationship filters, and backend conflict/capacity feedback.
 Authentication, database-enforced read isolation (RLS),
 imports, analytics, optimization, and AI are not implemented.
 

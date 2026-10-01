@@ -322,6 +322,13 @@ The code is separated into `routes.py`, `schemas.py`, `services.py`, and
 
 ## Phase 4A local frontend connection
 
+Phase 4D adds read-only `GET /api/workspaces/{workspace_id}` for workspace metadata
+(`id`, `name`, `slug`, `default_timezone`, `created_at`). The schedule UI requires
+the stored timezone; previously no API exposed it. The lookup is scoped to the
+route UUID and returns 404 for a missing workspace. This is not an authorization
+check: authentication/membership enforcement remain deferred. No models, migrations,
+schedule conflict rules, or reservation semantics were changed.
+
 The Next.js dashboard reads existing workspace-scoped list endpoints. Phase 4B
 Spaces uses the existing infrastructure mutation endpoints. Local CORS
 allows only `http://localhost:3000` and `http://127.0.0.1:3000`, with GET/POST/PATCH/DELETE access and

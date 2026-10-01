@@ -46,9 +46,52 @@ For large datasets, server aggregates/date filtering will be a future improvemen
 Each card/section handles loading, empty data, errors, and retry independently.
 Workspace changes unmount the previous dashboard and abort its requests.
 
-`/dashboard`, `/spaces`, and `/academic` are functional. `/schedule`, `/find-room`, and
+`/dashboard`, `/spaces`, `/academic`, and `/schedule` are functional. `/find-room` and
 `/reservations` are intentional future-feature placeholders. `/` redirects to
-the dashboard. Booking and scheduling UIs remain deferred.
+the dashboard. Booking and availability-search UIs remain deferred.
+
+## Schedule management (Phase 4D)
+
+`/schedule` lists official classes chronologically, resolving course/section,
+faculty/department, and room/campus/building/floor names from existing list APIs.
+Each list is loaded once (including all pages) per refresh. Summary counts show
+all entries, active entries, and active entries starting after the last refresh.
+Filters cover start date, room, faculty, section, course, and active status. The
+start-date filter uses the workspace timezone and matches the date the entry starts;
+it is not an overlap-with-day search. Summary counts remain unfiltered.
+
+Create and edit use named selectors and local date/time inputs. New entries offer
+active sections, faculty, and rooms; editing also preserves the current inactive
+references. PATCH supports all existing editable fields, including active status.
+Deactivation and reactivation use the existing endpoints; no hard delete is offered.
+Successful changes refresh relationship data and entries. Errors retain form input.
+No automatic room assignment, recurrence, or conflict override is implemented.
+
+The backend previously did not expose workspace timezone metadata. A read-only
+`GET /api/workspaces/{workspace_id}` now returns existing workspace fields including
+`default_timezone`. Schedule uses that value, not the development display label or
+browser timezone. Missing/invalid timezone metadata blocks schedule management.
+There is no timezone-editing UI in this phase.
+
+`@js-temporal/polyfill` converts workspace-local inputs to UTC ISO timestamps with
+`Z` for FastAPI. Display includes the workspace timezone and each instant's UTC
+offset. Nonexistent local times during forward clock changes are rejected.
+Repeated times require an explicit earlier/later choice for each endpoint. Existing
+unchanged timestamps preserve their exact instants by default, including fractional
+seconds; an explicit occurrence choice can change them. Intervals remain half-open,
+`[start, end)`, with strictly positive duration and adjacent entries allowed.
+
+The backend remains authoritative for capacity and conflicts. A pre-submit capacity
+warning shows student count versus room capacity without bypassing server checks.
+HTTP 409 details distinguish room, faculty, section, and approved reservation
+conflicts and show their named resources and local intervals. Capacity errors show
+the selected sizes. There is no JavaScript scheduling engine.
+
+Workspace changes clear forms, filters, and data and abort/ignore prior requests.
+Authentication is still deferred; knowing a workspace UUID does not establish
+permission. Large lists still load all pages and changes from other sessions require
+Refresh data. A cancelled browser request cannot undo a write already accepted by
+FastAPI. Automated tests use mocked APIs and disposable backend databases only.
 
 ## Academic management (Phase 4C)
 
@@ -117,7 +160,7 @@ until retry succeeds, so parent selectors never silently use partial data.
 
 - `src/components`: shell, workspace context/selector, shared state components.
 - `src/lib`: typed centralized API client and backend response types.
-- `src/features`: dashboard, Spaces/Academic UIs, and resource/form definitions.
+- `src/features`: dashboard, Spaces/Academic/Schedule UIs, and resource/form definitions.
 - `src/app`: route entry points, root layout, global CSS.
 
 Run `npm test`, `npm run typecheck`, `npm run lint`, and `npm run build`.
