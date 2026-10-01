@@ -1,5 +1,6 @@
 import type { Resources, SpaceResource, SpaceInputs, Facility, RoomFacility, AcademicResource, AcademicInputs } from "./api-types";
 import type { APIErrorDetail, WorkspaceRead, ScheduleInput, ScheduleEntry } from "./api-types";
+import type { AvailableRoom, AvailabilityQuery } from "./api-types";
 export class APIError extends Error {
   constructor(public status: number, public detail: APIErrorDetail) { super(detail.message); this.name = "APIError"; }
 }
@@ -42,6 +43,22 @@ export const scheduleApi = {
   update: (workspace: string, id: string, body: Partial<ScheduleInput>, signal: AbortSignal) => request<ScheduleEntry>(workspace, `schedule-entries/${encodeURIComponent(id)}`, "PATCH", signal, body),
   deactivate: (workspace: string, id: string, signal: AbortSignal) => request<ScheduleEntry>(workspace, `schedule-entries/${encodeURIComponent(id)}/deactivate`, "POST", signal),
 };
+
+/** The server applies occupancy and ALL-facility rules; collect every result page. */
+export async function findAvailableRooms(workspace: string, query: AvailabilityQuery, signal: AbortSignal): Promise<AvailableRoom[]> {
+  const params = new URLSearchParams({ starts_at: query.starts_at, ends_at: query.ends_at, minimum_capacity: String(query.minimum_capacity), limit: "200" });
+  if (query.room_type_id) params.set("room_type_id", query.room_type_id);
+  for (const id of query.facility_ids) params.append("facility_ids", id);
+  const rooms: AvailableRoom[] = [];
+  for (let offset = 0; ; offset += 200) {
+    signal.throwIfAborted();
+    params.set("offset", String(offset));
+    const page = await request<AvailableRoom[]>(workspace, `rooms/availability?${params}`, "GET", signal);
+    if (!Array.isArray(page)) throw new Error("The API returned an invalid availability response.");
+    rooms.push(...page);
+    if (page.length < 200) return rooms;
+  }
+}
 
 export const spacesApi = {
   create: <K extends SpaceResource>(workspace: string, resource: K, body: SpaceInputs[K], signal: AbortSignal) => request<Resources[K]>(workspace, resource, "POST", signal, body),

@@ -22,6 +22,10 @@ Phase 4C adds Academic management for departments, faculty, courses, and section
 with workspace-scoped forms and human-readable parent selectors.
 Phase 4D adds chronological schedule management, workspace-local time entry,
 relationship filters, and backend conflict/capacity feedback.
+Phase 4E adds read-only Find a Room searches with workspace-local time entry,
+capacity/type/ALL-facilities filters, and room cards with location context. The
+existing availability API remains authoritative; no booking actions are added.
+See [Find a Room usage and limitations](frontend/README.md#find-a-room-phase-4e).
 Authentication, database-enforced read isolation (RLS),
 imports, analytics, optimization, and AI are not implemented.
 

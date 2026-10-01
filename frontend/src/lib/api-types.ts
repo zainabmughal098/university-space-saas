@@ -8,6 +8,13 @@ export interface RoomType extends RecordRead { name: string; description: string
 export type Facility = RoomType;
 export interface RoomFacility { workspace_id: string; room_id: string; facility_id: string }
 export interface Room extends ActiveRecord { floor_id: string; room_type_id: string; code: string; capacity: number }
+export interface AvailableRoom extends Room {
+  room_type: RoomType; campus: Campus; building: Building; floor: Floor; facilities: Facility[];
+}
+export interface AvailabilityQuery {
+  starts_at: string; ends_at: string; minimum_capacity: number;
+  room_type_id?: string; facility_ids: string[];
+}
 export interface Department extends ActiveRecord { code: string }
 export interface Faculty extends ActiveRecord { department_id: string; email: string }
 export interface Course extends ActiveRecord { department_id: string; code: string }

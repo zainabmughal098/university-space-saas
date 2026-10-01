@@ -1,4 +1,25 @@
 :root { --ink: #192d32; --muted: #5d7075; --line: #dce5e4; --accent: #176658; --surface: #fff; --background: #f3f6f5; }
+.find-room-page { max-width: 960px; margin-inline: auto; }
+.find-room-page .schedule-editor .room-requirements { margin-top: 24px; }
+.find-room-page .room-requirements input { min-height: 48px; font-size: 16px; }
+.find-room-page .schedule-editor .facility-requirements { margin-top: 24px; }
+.facility-requirements legend { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.facility-checklist { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 10px; margin-top: 12px; }
+.facility-checklist label { display: flex; flex-direction: row; align-items: center; gap: 10px; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; overflow-wrap: anywhere; cursor: pointer; }
+.facility-checklist input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent); }
+.availability-results { margin-top: 28px; }
+.availability-results > h2 { margin-bottom: 12px; }
+.result-count { font-size: 20px; font-weight: 600; margin: 12px 0; }
+.availability-context { font-size: 12px; color: var(--muted); margin-bottom: 20px; overflow-wrap: anywhere; }
+.availability-context p + p { margin-top: 5px; }
+.available-room-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 18px; }
+.available-room-card { overflow-wrap: anywhere; }
+.available-room-card .panel-heading { flex-wrap: wrap; }
+.available-room-card h3 { font-size: 17px; }
+.available-room-card h4 { font-size: 12px; margin: 18px 0 8px; }
+.room-location { margin: 10px 0; color: var(--muted); }
+.room-facility-tags { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.room-facility-tags li { font-size: 12px; background: #edf3f0; color: #294c43; border-radius: 5px; padding: 5px 9px; }
 select, textarea { font: inherit; padding: 10px 12px; border: 1px solid #b9c9c6; border-radius: 6px; background: white; color: var(--ink); width: 100%; }
 button:disabled { cursor: not-allowed; opacity: .55; }
 .spaces-summary { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0; }

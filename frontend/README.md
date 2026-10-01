@@ -4,6 +4,31 @@ Next.js with TypeScript, App Router, ESLint, and a src/ directory.
 Phase 4A provides a responsive workspace dashboard. System fonts and plain CSS
 keep builds independent of font downloads; no UI dependencies were added.
 
+## Find a Room (Phase 4E)
+
+`/find-room` is a read-only search with When, Room requirements, and Available
+rooms sections. Start and End reuse the Schedule date/hour/minute/AM-PM controls
+and workspace timezone conversion, including rejection of nonexistent clock times
+and explicit earlier/later choices for repeated times. Dates support manual entry.
+
+Choose a positive minimum capacity, an optional named room type, and zero or more
+required facilities. ALL selected facilities are required. Search calls the existing
+workspace-scoped `GET /rooms/availability` endpoint, collecting every result page.
+The backend alone determines availability using active rooms, active schedule entries,
+approved reservations, and half-open `[starts_at, ends_at)` intervals. No browser
+overlap calculation or booking action is implemented.
+
+Cards show room name/code, capacity versus requested minimum, type, campus,
+building, floor, and facilities directly from the availability response. Loading,
+errors with retry, no results, and result counts are explicit. Editing requirements
+clears previous results; switching workspaces clears all search state and aborts or
+ignores old requests. Results are a snapshot, not a booking or guarantee; concurrent
+changes can affect paginated results. Search again for updated availability.
+
+The workspace selector remains temporary development tooling, not authentication
+or membership authorization. Single-room checks and reservation UI are deferred.
+All automated coverage uses mocked APIs, with no Supabase access.
+
 ## Run locally
 
 Start FastAPI in a separate terminal from `backend/`:
@@ -46,8 +71,8 @@ For large datasets, server aggregates/date filtering will be a future improvemen
 Each card/section handles loading, empty data, errors, and retry independently.
 Workspace changes unmount the previous dashboard and abort its requests.
 
-`/dashboard`, `/spaces`, `/academic`, and `/schedule` are functional. `/find-room` and
-`/reservations` are intentional future-feature placeholders. `/` redirects to
+`/dashboard`, `/spaces`, `/academic`, `/schedule`, and `/find-room` are functional.
+`/reservations` remains a future-feature placeholder. `/` redirects to
 the dashboard. Booking and availability-search UIs remain deferred.
 
 ## Schedule management (Phase 4D)
