@@ -54,12 +54,19 @@ function setup(t, entries = [], control = {}) {
 }
 function selectWorkspace(value) { fireEvent.change(screen.getByLabelText("Workspace UUID"), { target: { value } }); fireEvent.click(screen.getByRole("button", { name: "Use workspace" })); }
 const fill = (name, value) => fireEvent.change(screen.getByLabelText(name), { target: { value } });
+function fillTime(label, value) {
+  fill(`${label} date`, value.slice(0, 10));
+  const hour = Number(value.slice(11, 13));
+  fill(`${label} hour`, String(hour % 12 || 12));
+  fill(`${label} minute`, value.slice(14, 16));
+  fill(`${label} AM/PM`, hour >= 12 ? "PM" : "AM");
+}
 const save = () => fireEvent.submit(screen.getByRole("button", { name: "Save changes" }).closest("form"));
 async function openCreate() {
   await screen.findByRole("heading", { name: "Chronological schedule" });
   fireEvent.click(screen.getByRole("button", { name: "Create new" }));
   for (const name of ["Section *", "Faculty *", "Room *"]) fill(name, id);
-  fill("Start *", "2026-10-01T09:00"); fill("End *", "2026-10-01T10:00");
+  fillTime("Start", "2026-10-01T09:00"); fillTime("End", "2026-10-01T10:00");
 }
 const table = () => screen.getByRole("region", { name: "Schedule entries" });
 
@@ -80,13 +87,43 @@ test("empty schedule and create use readable selectors and timezone-aware payloa
 test("invalid intervals preserve form and make no mutation", async t => {
   const { requests } = setup(t); await openCreate();
   for (const end of ["2026-10-01T09:00", "2026-10-01T08:00"]) {
-    fill("End *", end); save(); assert.match(screen.getByRole("alert").textContent, /End must be later/);
+    fillTime("End", end); save(); assert.match(screen.getByRole("alert").textContent, /End must be later/);
   }
   assert.equal(requests.filter(row => row.method !== "GET").length, 0);
 });
+test("split controls handle midnight/noon and expose no native datetime popup", async t => {
+  const { requests } = setup(t); await openCreate();
+  assert.equal(document.querySelector('input[type="datetime-local"]'), null);
+  assert.equal(screen.queryByRole("button", { name: /Choose|picker/i }), null);
+  fillTime("Start", "2026-10-01T00:05"); fillTime("End", "2026-10-01T12:15");
+  assert.equal(screen.getByLabelText("Start hour").value, "12");
+  assert.equal(screen.getByLabelText("Start AM/PM").value, "AM");
+  assert.equal(screen.getByLabelText("End AM/PM").value, "PM");
+  save(); await screen.findByRole("region", { name: "Schedule entries" });
+  const payload = requests.find(row => row.method === "POST").body;
+  assert.equal(payload.starts_at, "2026-10-01T04:05:00Z");
+  assert.equal(payload.ends_at, "2026-10-01T16:15:00Z");
+});
+test("manual dates and DST gaps are validated without mutations", async t => {
+  const { requests } = setup(t); await openCreate();
+  fill("Start date", "2026-02-30"); save(); assert.ok(screen.getByRole("alert"));
+  fill("Start date", ""); save(); assert.match(screen.getByRole("alert").textContent, /required/);
+  fillTime("Start", "2026-03-08T02:30"); fillTime("End", "2026-03-08T04:00");
+  save(); assert.match(screen.getByRole("alert").textContent, /does not exist/);
+  assert.equal(requests.filter(row => row.method !== "GET").length, 0);
+});
+test("editing without changing split controls preserves existing seconds", async t => {
+  const precise = { ...entry, starts_at: "2026-10-01T13:00:23.456Z", ends_at: "2026-10-01T14:00:45Z" };
+  const { requests } = setup(t, [precise]); await screen.findByRole("region", { name: "Schedule entries" });
+  fireEvent.click(within(table()).getByRole("button", { name: "Edit" }));
+  save(); await screen.findByRole("region", { name: "Schedule entries" });
+  const payload = requests.find(row => row.method === "PATCH").body;
+  assert.equal(payload.starts_at, precise.starts_at);
+  assert.equal(payload.ends_at, precise.ends_at);
+});
 test("fall-back interval can choose different start and end occurrences", async t => {
   const { requests } = setup(t); await openCreate();
-  fill("Start *", "2026-11-01T01:45"); fill("End *", "2026-11-01T01:15");
+  fillTime("Start", "2026-11-01T01:45"); fillTime("End", "2026-11-01T01:15");
   save(); assert.match(screen.getByRole("alert").textContent, /occurs twice/);
   fill("Repeated start clock time", "earlier"); fill("Repeated end clock time", "later");
   save(); await screen.findByRole("region", { name: "Schedule entries" });
@@ -115,8 +152,9 @@ for (const kind of ["room", "faculty", "section", "reservation"]) test(`${kind} 
 test("edit converts existing times, patch and deactivate/reactivate refresh", async t => {
   const { requests } = setup(t, [entry]); await screen.findByRole("region", { name: "Schedule entries" });
   fireEvent.click(within(table()).getByRole("button", { name: "Edit" }));
-  assert.match(screen.getByLabelText("Start *").value, /^2026-10-01T09:00/);
-  fill("End *", "2026-10-01T11:00"); save(); await screen.findByRole("region", { name: "Schedule entries" });
+  assert.equal(screen.getByLabelText("Start date").value, "2026-10-01");
+  assert.equal(screen.getByLabelText("Start hour").value, "9");
+  fillTime("End", "2026-10-01T11:00"); save(); await screen.findByRole("region", { name: "Schedule entries" });
   assert.equal(requests.find(row => row.method === "PATCH").body.ends_at, "2026-10-01T15:00:00Z");
   fireEvent.click(within(table()).getByRole("button", { name: "Deactivate" }));
   await screen.findByRole("button", { name: "Reactivate" });

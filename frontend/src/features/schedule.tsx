@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useWorkspace } from "@/components/workspace";
 import { Empty, Failure } from "@/components/ui";
+import { DateTimeField } from "@/components/date-time-field";
 import { APIError, listAll, scheduleApi } from "@/lib/api";
 import type { ScheduleEntry, ScheduleInput, WorkspaceRead } from "@/lib/api-types";
 import { displayTime, interval, localInput, toInstant, validateTimezone } from "@/lib/schedule-time";
@@ -46,20 +47,26 @@ function Editor({ record, data, zone, saving, error, save, cancel }: { record?: 
       save({ ...selected, starts_at, ends_at, is_active: form.get("is_active") === "on" });
     } catch (error) { setValidation(message(error)); }
   }
-  return <section className="panel space-editor"><h2 tabIndex={-1} ref={heading}>{record ? "Edit schedule entry" : "Create schedule entry"}</h2>
-    <p>Enter dates and times in <strong>{zone}</strong>. End time is exclusive; back-to-back entries are allowed.</p>
+  return <section className="panel space-editor schedule-editor"><header className="schedule-editor-header"><h2 tabIndex={-1} ref={heading}>{record ? "Edit schedule entry" : "Create schedule entry"}</h2>
+    <p className="muted">Times are entered in <strong>{zone}</strong>.</p></header>
     {missing.length > 0 && <p className="error">Create or reactivate {missing.map(([, , text]) => text.toLowerCase()).join(", ")} first.</p>}
-    <form onSubmit={submit}><fieldset disabled={saving}><div className="space-fields">
-      {parents.map(([resource, key, text]) => <label key={key}>{text} *<select required name={key} value={selected[key]} onChange={event => setSelected({ ...selected, [key]: event.target.value })}><option value="">Select {text.toLowerCase()}</option>{options(resource, key).map(row => <option key={row.id} value={row.id}>{label(data, resource, row.id)}</option>)}</select></label>)}
-      <label>Start *<input name="starts_at" type="datetime-local" step="any" required defaultValue={record ? localInput(record.starts_at, zone) : ""} /></label>
-      <label>End *<input name="ends_at" type="datetime-local" step="any" required defaultValue={record ? localInput(record.ends_at, zone) : ""} /></label>
+    <form onSubmit={submit}><fieldset disabled={saving}>
+      <fieldset className="schedule-form-section"><legend>Class details</legend><div className="schedule-class-grid">
+      {parents.map(([resource, key, text]) => <div className={key === "room_id" ? "schedule-room-field" : undefined} key={key}><label>{text} *<select required name={key} value={selected[key]} onChange={event => setSelected({ ...selected, [key]: event.target.value })}><option value="">Select {text.toLowerCase()}</option>{options(resource, key).map(row => <option key={row.id} value={row.id}>{label(data, resource, row.id)}</option>)}</select></label>{key === "room_id" && selected.room_id && <span className="muted schedule-room-context">{label(data, "rooms", selected.room_id)}</span>}</div>)}
+      </div></fieldset>
+      <section className="schedule-time-section" aria-labelledby="schedule-time-heading"><h3 id="schedule-time-heading">Date &amp; time</h3><p className="muted">End time is exclusive; back-to-back entries are allowed.</p><div className="schedule-time-rows">
+      <DateTimeField label="Start" name="starts_at" defaultValue={record ? localInput(record.starts_at, zone) : ""} />
+      <DateTimeField label="End" name="ends_at" defaultValue={record ? localInput(record.ends_at, zone) : ""} />
+      </div></section>
+      <fieldset className="schedule-advanced"><legend>Advanced time options</legend><p className="muted">For repeated local times during a clock change. Otherwise, keep the default.</p><div className="schedule-advanced-grid">
       {(["starts", "ends"] as const).map(key => <label key={key}>Repeated {key === "starts" ? "start" : "end"} clock time<select name={`${key}_occurrence`} defaultValue="reject"><option value="reject">Ask if a time occurs twice</option><option value="earlier">Earlier occurrence</option><option value="later">Later occurrence</option></select></label>)}
-      <label>Active<input style={{ width: "auto", alignSelf: "flex-start" }} name="is_active" type="checkbox" defaultChecked={record?.is_active ?? true} /></label>
-    </div></fieldset>
+      </div></fieldset>
+      <label className="schedule-active"><input name="is_active" type="checkbox" defaultChecked={record?.is_active ?? true} />Active</label>
+    </fieldset>
     {room && section && room.capacity < section.student_count && <p role="status" className="error">Capacity warning: {section.student_count} students; room capacity {room.capacity}. The backend will validate this entry.</p>}
     {validation && <p role="alert" className="error">{validation}</p>}
     <ScheduleError error={error} data={data} zone={zone} proposed={selected} />
-    <div className="space-actions"><button disabled={saving || missing.length > 0}>{saving ? "Saving…" : "Save changes"}</button><button type="button" className="secondary" disabled={saving} onClick={cancel}>Cancel</button></div>
+    <div className="schedule-form-actions"><button type="button" className="secondary" disabled={saving} onClick={cancel}>Cancel</button><button disabled={saving || missing.length > 0}>{saving ? "Saving…" : "Save changes"}</button></div>
     </form>
   </section>;
 }

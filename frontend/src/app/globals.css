@@ -64,6 +64,44 @@ summary .badge { margin-left: 10px; }
 .workspace-picker form { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; margin-top: 18px; }
 label { display: flex; flex: 1; min-width: 210px; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; }
 input { width: 100%; padding: 10px 12px; border: 1px solid #b9c9c6; border-radius: 6px; color: var(--ink); background: #fff; }
+.date-time-field { min-width: 0; }
+.date-time-field legend { font-weight: 600; margin-bottom: 8px; }
+.date-time-controls { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(90px, 1fr)); gap: 12px; }
+.date-time-controls label { min-width: 0; margin: 0; }
+.date-time-hint { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.date-time-controls input, .date-time-controls select { min-width: 0; width: 100%; min-height: 48px; padding: 12px; font-size: 16px; line-height: 1.5; }
+.date-time-controls select { appearance: none; padding-right: 28px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m3 6 5 5 5-5' fill='none' stroke='%23192d32' stroke-width='2'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; }
+@media (forced-colors: active) { .date-time-controls select { appearance: auto; background-image: none; } }
+.schedule-editor { max-width: 960px; margin-inline: auto; container: schedule-form / inline-size; }
+.schedule-editor-header { padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.schedule-editor-header p { margin-top: 6px; }
+.schedule-editor form { margin-top: 24px; }
+.schedule-editor label { min-width: 0; }
+.schedule-editor select { min-height: 48px; }
+.schedule-form-section > legend, .schedule-time-section > h3 { font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+.schedule-class-grid, .schedule-advanced-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 14px; }
+.schedule-room-field { grid-column: 1 / -1; }
+.schedule-room-context { display: block; margin-top: 6px; font-weight: 400; overflow-wrap: anywhere; }
+.schedule-time-section { margin: 24px 0; padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: #f7faf8; }
+.schedule-time-section > p { margin-top: 6px; }
+.schedule-time-rows { display: grid; gap: 20px; margin-top: 20px; }
+.schedule-editor .schedule-advanced { padding-top: 12px; border-top: 1px solid var(--line); }
+.schedule-advanced legend { font-size: 13px; font-weight: 600; color: var(--muted); padding-right: 12px; }
+.schedule-advanced-grid { margin-top: 12px; }
+.schedule-editor .schedule-active { display: flex; flex-direction: row; align-items: center; gap: 10px; width: fit-content; min-height: 48px; margin-top: 16px; font-size: 14px; }
+.schedule-active input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.schedule-form-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--line); padding-top: 20px; margin-top: 16px; }
+.schedule-form-actions button { min-height: 48px; min-width: 124px; }
+@container schedule-form (max-width: 560px) {
+  .schedule-class-grid, .schedule-advanced-grid { grid-template-columns: 1fr; }
+  .schedule-time-section { padding: 16px; }
+  .date-time-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .date-time-controls .date-time-date { grid-column: 1 / -1; }
+}
+@container schedule-form (max-width: 340px) {
+  .date-time-controls { grid-template-columns: 1fr; }
+  .schedule-form-actions button { flex: 1; }
+}
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 28px; }
 .page-heading p:last-child { color: var(--muted); }
 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 28px; }
