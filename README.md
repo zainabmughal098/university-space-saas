@@ -18,6 +18,8 @@ room occupancy checks. Migration `0004_room_reservations` has been applied and v
 Phase 4A adds a workspace dashboard with real API data and navigation placeholders.
 Phase 4B adds Spaces management: campuses, buildings, floors, room types, facilities,
 rooms, and room-facility assignments. See [Spaces usage](frontend/README.md).
+Phase 4C adds Academic management for departments, faculty, courses, and sections,
+with workspace-scoped forms and human-readable parent selectors.
 Authentication, database-enforced read isolation (RLS),
 imports, analytics, optimization, and AI are not implemented.
 

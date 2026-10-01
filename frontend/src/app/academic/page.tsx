@@ -1,2 +1,2 @@
-import { ComingNext } from "@/components/ui";
-export default function Page() { return <ComingNext title="Academic" description="Departments, faculty, courses, and sections in your university." />; }
+import Academic from "@/features/academic";
+export default function Page() { return <Academic />; }

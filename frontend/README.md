@@ -46,9 +46,36 @@ For large datasets, server aggregates/date filtering will be a future improvemen
 Each card/section handles loading, empty data, errors, and retry independently.
 Workspace changes unmount the previous dashboard and abort its requests.
 
-`/dashboard` and `/spaces` are functional. `/academic`, `/schedule`, `/find-room`, and
+`/dashboard`, `/spaces`, and `/academic` are functional. `/schedule`, `/find-room`, and
 `/reservations` are intentional future-feature placeholders. `/` redirects to
-the dashboard. Booking and academic management UIs remain deferred.
+the dashboard. Booking and scheduling UIs remain deferred.
+
+## Academic management (Phase 4C)
+
+Open `/academic` after selecting a development workspace. Eight summary cards show
+total and active departments, faculty, courses, and sections. Four resource tabs
+use the same table and inline create/edit pattern as Spaces. All records support
+create, edit, deactivate, and reactivate; there are no delete controls.
+
+Faculty and courses belong to departments; sections belong to courses. Selectors
+show names/codes, and section course labels include department context. Creation
+offers active parent records only. Editing also includes the currently assigned
+parent if inactive, so an existing relationship can be retained. An active course
+may still have an inactive department; its context explicitly marks that department.
+Missing active parents disable creation with setup guidance.
+
+Forms send only backend-supported fields. Faculty email receives basic format
+validation; section student counts must be positive 32-bit integers. Backend errors
+are displayed without clearing entered values. Successful changes reload all four
+lists so counts, labels, and parent selectors stay current. Deactivation does not
+cascade. Use Refresh data for changes made in another session.
+
+Workspace changes discard unsaved forms and old data, abort outstanding requests,
+and load the new workspace. Aborting cannot undo a write already accepted by the
+server. Authentication and membership authorization remain pending; the selector
+does not establish permission. Lists load all API pages for now, and a failed list
+blocks management until retry succeeds rather than showing incomplete parents.
+Tests mock API calls; no live records are created or modified by automated checks.
 
 ## Spaces management (Phase 4B)
 
@@ -90,7 +117,7 @@ until retry succeeds, so parent selectors never silently use partial data.
 
 - `src/components`: shell, workspace context/selector, shared state components.
 - `src/lib`: typed centralized API client and backend response types.
-- `src/features`: dashboard, Spaces UI, and reusable resource/form definitions.
+- `src/features`: dashboard, Spaces/Academic UIs, and resource/form definitions.
 - `src/app`: route entry points, root layout, global CSS.
 
 Run `npm test`, `npm run typecheck`, `npm run lint`, and `npm run build`.

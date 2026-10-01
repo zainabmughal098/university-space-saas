@@ -30,4 +30,6 @@ export interface Resources {
   "schedule-entries": ScheduleEntry; reservations: Reservation;
 }
 export type SpaceResource = "campuses" | "buildings" | "floors" | "rooms" | "room-types" | "facilities";
+export type AcademicResource = "departments" | "faculty" | "courses" | "sections";
+export type AcademicInputs = { [K in AcademicResource]: Omit<Resources[K], "id" | "workspace_id" | "created_at" | "is_active"> & { is_active?: boolean } };
 export type SpaceInputs = { [K in SpaceResource]: Omit<Resources[K], "id" | "workspace_id" | "created_at" | "is_active"> & (K extends "campuses" | "buildings" | "floors" | "rooms" ? { is_active?: boolean } : object) };

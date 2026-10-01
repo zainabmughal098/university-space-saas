@@ -1,4 +1,4 @@
-import type { Resources, SpaceResource, SpaceInputs, Facility, RoomFacility } from "./api-types";
+import type { Resources, SpaceResource, SpaceInputs, Facility, RoomFacility, AcademicResource, AcademicInputs } from "./api-types";
 export const isWorkspaceId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 async function request<T>(workspace: string, path: string, method: string, signal: AbortSignal, body?: unknown): Promise<T> {
@@ -25,6 +25,12 @@ async function request<T>(workspace: string, path: string, method: string, signa
   if (rows.some(row => row.workspace_id !== workspace.toLowerCase())) throw new Error("The API returned unexpected workspace data.");
   return result as T;
 }
+
+export const academicApi = {
+  create: <K extends AcademicResource>(workspace: string, resource: K, body: AcademicInputs[K], signal: AbortSignal) => request<Resources[K]>(workspace, resource, "POST", signal, body),
+  update: <K extends AcademicResource>(workspace: string, resource: K, id: string, body: Partial<AcademicInputs[K]>, signal: AbortSignal) => request<Resources[K]>(workspace, `${resource}/${encodeURIComponent(id)}`, "PATCH", signal, body),
+  deactivate: <K extends AcademicResource>(workspace: string, resource: K, id: string, signal: AbortSignal) => request<Resources[K]>(workspace, `${resource}/${encodeURIComponent(id)}/deactivate`, "POST", signal),
+};
 
 export const spacesApi = {
   create: <K extends SpaceResource>(workspace: string, resource: K, body: SpaceInputs[K], signal: AbortSignal) => request<Resources[K]>(workspace, resource, "POST", signal, body),
