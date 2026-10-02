@@ -2,10 +2,20 @@
 
 from datetime import datetime, timezone
 from typing import Annotated, Self
+from typing import Literal
 from uuid import UUID
 
 from pydantic import (AfterValidator, AwareDatetime, BaseModel,
                       ConfigDict, Field, StringConstraints, model_validator)
+
+class WorkspaceMemberRead(BaseModel):
+    """Development directory only; membership does not authenticate a caller."""
+    user_id: UUID
+    display_name: str
+    email: str
+    role: Literal["owner", "admin", "member", "viewer"]
+    is_active: bool
+
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
 Code = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]

@@ -73,6 +73,18 @@ class WorkspaceService:
             raise APIError(404, "workspace_not_found", "Workspace not found.")
         return schemas.WorkspaceRead.model_validate(record)
 
+    def members(self, limit: int, offset: int):
+        query = (
+            select(models.Membership.user_id, models.User.display_name, models.User.email,
+                   models.Membership.role, models.Membership.is_active)
+            .join(models.User, models.User.id == models.Membership.user_id)
+            .where(models.Membership.workspace_id == self.workspace_id)
+            .order_by(models.User.display_name, models.Membership.user_id)
+            .limit(limit).offset(offset)
+        )
+        return [schemas.WorkspaceMemberRead.model_validate(row)
+                for row in self.session.execute(query).mappings()]
+
     def validate_values(self, resource: Resource, values: dict, record=None):
         for field, parent in resource.parents:
             if field in values:

@@ -26,6 +26,10 @@ Phase 4E adds read-only Find a Room searches with workspace-local time entry,
 capacity/type/ALL-facilities filters, and room cards with location context. The
 existing availability API remains authoritative; no booking actions are added.
 See [Find a Room usage and limitations](frontend/README.md#find-a-room-phase-4e).
+Phase 4F adds Reservations management with a reusable calendar, workspace-local
+date/time entry, status filters/counts, details and create/approve/reject/cancel
+workflows. A read-only workspace-member directory powers named development identity
+selectors; these are not authentication. See [Reservations usage](frontend/README.md#reservations-phase-4f).
 Authentication, database-enforced read isolation (RLS),
 imports, analytics, optimization, and AI are not implemented.
 

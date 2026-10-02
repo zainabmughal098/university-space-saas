@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useWorkspace } from "@/components/workspace";
 import { Empty, Failure } from "@/components/ui";
+import { Temporal } from "@js-temporal/polyfill";
+import { CalendarDatePicker } from "@/components/calendar-date-picker";
 import { DateTimeField } from "@/components/date-time-field";
 import { APIError, listAll, scheduleApi } from "@/lib/api";
 import type { ScheduleEntry, ScheduleInput, WorkspaceRead } from "@/lib/api-types";
@@ -55,8 +57,8 @@ function Editor({ record, data, zone, saving, error, save, cancel }: { record?: 
       {parents.map(([resource, key, text]) => <div className={key === "room_id" ? "schedule-room-field" : undefined} key={key}><label>{text} *<select required name={key} value={selected[key]} onChange={event => setSelected({ ...selected, [key]: event.target.value })}><option value="">Select {text.toLowerCase()}</option>{options(resource, key).map(row => <option key={row.id} value={row.id}>{label(data, resource, row.id)}</option>)}</select></label>{key === "room_id" && selected.room_id && <span className="muted schedule-room-context">{label(data, "rooms", selected.room_id)}</span>}</div>)}
       </div></fieldset>
       <section className="schedule-time-section" aria-labelledby="schedule-time-heading"><h3 id="schedule-time-heading">Date &amp; time</h3><p className="muted">End time is exclusive; back-to-back entries are allowed.</p><div className="schedule-time-rows">
-      <DateTimeField label="Start" name="starts_at" defaultValue={record ? localInput(record.starts_at, zone) : ""} />
-      <DateTimeField label="End" name="ends_at" defaultValue={record ? localInput(record.ends_at, zone) : ""} />
+      <DateTimeField label="Start" name="starts_at" defaultValue={record ? localInput(record.starts_at, zone) : ""} calendarToday={Temporal.Now.plainDateISO(zone).toString()} />
+      <DateTimeField label="End" name="ends_at" defaultValue={record ? localInput(record.ends_at, zone) : ""} calendarToday={Temporal.Now.plainDateISO(zone).toString()} />
       </div></section>
       <fieldset className="schedule-advanced"><legend>Advanced time options</legend><p className="muted">For repeated local times during a clock change. Otherwise, keep the default.</p><div className="schedule-advanced-grid">
       {(["starts", "ends"] as const).map(key => <label key={key}>Repeated {key === "starts" ? "start" : "end"} clock time<select name={`${key}_occurrence`} defaultValue="reject"><option value="reject">Ask if a time occurs twice</option><option value="earlier">Earlier occurrence</option><option value="later">Later occurrence</option></select></label>)}
@@ -111,7 +113,7 @@ function WorkspaceSchedule({ workspace }: { workspace: string }) {
       <div className="spaces-summary"><div><strong>{data["schedule-entries"].length}</strong><span>Total entries</span></div><div><strong>{data["schedule-entries"].filter(row => row.is_active).length}</strong><span>Active entries</span></div><div><strong>{data["schedule-entries"].filter(row => row.is_active && Date.parse(row.starts_at) >= loaded.now).length}</strong><span>Upcoming active entries</span></div></div>
       {editor ? <Editor key={editor.record?.id ?? "new"} record={editor.record} data={data} zone={zone} saving={saving} error={error} cancel={() => { setEditor(null); setError(null); }} save={body => void mutate(signal => editor.record ? scheduleApi.update(workspace, editor.record.id, body, signal) : scheduleApi.create(workspace, body, signal), body)} /> : <section className="panel">
         <div className="panel-heading"><h2>Chronological schedule</h2><button disabled={saving} onClick={() => { setEditor({}); setError(null); }}>Create new</button></div>
-        <div className="space-fields"><label>Start date ({zone})<input type="date" value={filters.date} onChange={event => setFilters({ ...filters, date: event.target.value })} /></label>
+        <div className="space-fields"><CalendarDatePicker label={`Start date (${zone})`} value={filters.date} onChange={date => setFilters({ ...filters, date })} today={Temporal.Now.plainDateISO(zone).toString()} clearable />
           {(["rooms", "faculty", "sections", "courses"] as const).map(key => <label key={key}>Filter {key}<select value={filters[key]} onChange={event => setFilters({ ...filters, [key]: event.target.value })}><option value="">All {key}</option>{data[key].map(row => <option key={row.id} value={row.id}>{label(data, key, row.id)}</option>)}</select></label>)}
           <label>Status<select value={filters.status} onChange={event => setFilters({ ...filters, status: event.target.value })}><option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
         </div><button className="secondary" onClick={() => setFilters({ date: "", rooms: "", faculty: "", sections: "", courses: "", status: "all" })}>Clear filters</button>

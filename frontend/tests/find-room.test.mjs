@@ -7,6 +7,8 @@ for (const key of ["window", "document", "HTMLElement", "HTMLInputElement", "Mut
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { render, screen, fireEvent, cleanup, act } = await import("@testing-library/react");
+const { installDialogMock, selectCalendar } = await import("./calendar-helper.mjs");
+installDialogMock(dom);
 const { default: FindRoom } = await import("../src/features/find-room.tsx");
 const { WorkspaceProvider, WorkspaceSelector } = await import("../src/components/workspace.tsx");
 const { findAvailableRooms } = await import("../src/lib/api.ts");
@@ -21,7 +23,7 @@ const room = { ...base, name: "Lecture Hall", code: "LT-1", capacity: 100, floor
 const fill = (name, value) => fireEvent.change(screen.getByLabelText(name), { target: { value } });
 function select(value) { fill("Workspace UUID", value); fireEvent.click(screen.getByRole("button", { name: "Use workspace" })); }
 function time(label, value) {
-  fill(`${label} date`, value.slice(0, 10)); const hour = Number(value.slice(11, 13));
+  selectCalendar(`${label} date`, value.slice(0, 10)); const hour = Number(value.slice(11, 13));
   fill(`${label} hour`, String(hour % 12 || 12)); fill(`${label} minute`, value.slice(14, 16)); fill(`${label} AM/PM`, hour >= 12 ? "PM" : "AM");
 }
 const search = () => fireEvent.submit(screen.getByRole("button", { name: "Find available rooms" }).closest("form"));
@@ -67,12 +69,19 @@ test("timezone, capacity, type and ALL facilities query display human-readable r
   for (const text of ["LT-1", "Lecture Hall", "100", "Lecture Theatre", "North Campus", "Science Block", "Ground Floor", "Projector", "Whiteboard"]) assert.ok(card.textContent.includes(text));
   fill("Minimum capacity *", "60"); assert.equal(screen.queryByRole("article"), null);
 });
+test("calendar dates are independent and changing a date clears stale results", async t => {
+  setup(t); await ready(); search(); await screen.findByText("1 room available");
+  selectCalendar("End date", "2026-10-02");
+  assert.ok(screen.getByRole("button", { name: "Start date Oct 1, 2026" }));
+  assert.ok(screen.getByRole("button", { name: "End date Oct 2, 2026" }));
+  assert.equal(screen.queryByRole("article"), null);
+  assert.equal(document.querySelector('input[placeholder="YYYY-MM-DD"]'), null);
+});
 test("invalid capacity, interval, missing date and DST gap never search", async t => {
   const { searches } = setup(t); await ready();
   for (const value of ["", "0", "-1", "1.5", "2147483648"]) { fill("Minimum capacity *", value); search(); assert.match(screen.getByRole("alert").textContent, /positive integer/); }
   fill("Minimum capacity *", "1");
   for (const end of ["2026-10-01T09:00", "2026-10-01T08:00"]) { time("End", end); search(); assert.match(screen.getByRole("alert").textContent, /End must be later/); }
-  fill("Start date", ""); search(); assert.ok(screen.getByRole("alert"));
   time("Start", "2026-03-08T02:30"); time("End", "2026-03-08T04:00"); search(); assert.ok(screen.getByRole("alert"));
   assert.equal(searches().length, 0);
 });
@@ -93,7 +102,7 @@ test("loading disables search and no-results explains next step; optional filter
 });
 test("API and network errors retain criteria and allow retry", async t => {
   const { control } = setup(t, { failure: true }); await ready(); search(); await screen.findByRole("alert");
-  assert.match(screen.getByRole("alert").textContent, /Search rejected/); assert.equal(screen.getByLabelText("Start date").value, "2026-10-01");
+  assert.match(screen.getByRole("alert").textContent, /Search rejected/); assert.equal(document.querySelector('input[name="starts_at"]').value.slice(0, 10), "2026-10-01");
   control.failure = false; control.network = true; search(); await screen.findByRole("alert");
   control.network = false; search(); await screen.findByText("1 room available");
 });
@@ -104,7 +113,7 @@ test("metadata error has retry", async t => {
 test("workspace change clears results and inputs and ignores an old search response", async t => {
   const { control, searches } = setup(t); await ready(); search(); await screen.findByText("1 room available");
   select(b); await screen.findByRole("button", { name: "Find available rooms" });
-  assert.equal(screen.queryByRole("article"), null); assert.equal(screen.getByLabelText("Start date").value, "");
+  assert.equal(screen.queryByRole("article"), null); assert.equal(document.querySelector('input[name="starts_at"]').value, "");
   select(a); await ready(); let resolve; control.delay = new Promise(done => { resolve = done; }); search();
   select(b); await screen.findByRole("button", { name: "Find available rooms" }); assert.equal(searches().at(-1).signal.aborted, true);
   await act(async () => { resolve(); }); assert.equal(screen.queryByRole("article"), null);

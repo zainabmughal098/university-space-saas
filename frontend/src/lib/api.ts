@@ -1,12 +1,20 @@
 import type { Resources, SpaceResource, SpaceInputs, Facility, RoomFacility, AcademicResource, AcademicInputs } from "./api-types";
 import type { APIErrorDetail, WorkspaceRead, ScheduleInput, ScheduleEntry } from "./api-types";
 import type { AvailableRoom, AvailabilityQuery } from "./api-types";
+import type { Reservation, ReservationInput, ReservationReview, WorkspaceMember } from "./api-types";
+export const reservationApi = {
+  create: (workspace: string, body: ReservationInput, signal: AbortSignal) => request<Reservation>(workspace, "reservations", "POST", signal, body),
+  get: (workspace: string, id: string, signal: AbortSignal) => request<Reservation>(workspace, `reservations/${encodeURIComponent(id)}`, "GET", signal),
+  approve: (workspace: string, id: string, body: ReservationReview, signal: AbortSignal) => request<Reservation>(workspace, `reservations/${encodeURIComponent(id)}/approve`, "POST", signal, body),
+  reject: (workspace: string, id: string, body: ReservationReview, signal: AbortSignal) => request<Reservation>(workspace, `reservations/${encodeURIComponent(id)}/reject`, "POST", signal, body),
+  cancel: (workspace: string, id: string, signal: AbortSignal) => request<Reservation>(workspace, `reservations/${encodeURIComponent(id)}/cancel`, "POST", signal),
+};
 export class APIError extends Error {
   constructor(public status: number, public detail: APIErrorDetail) { super(detail.message); this.name = "APIError"; }
 }
 export const isWorkspaceId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
-async function request<T>(workspace: string, path: string, method: string, signal: AbortSignal, body?: unknown): Promise<T> {
+async function request<T>(workspace: string, path: string, method: string, signal: AbortSignal, body?: unknown, scope: "workspace" | "members" = "workspace"): Promise<T> {
   if (!isWorkspaceId(workspace)) throw new Error("Select a valid workspace UUID.");
   const base = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
   if (!base) throw new Error("Set NEXT_PUBLIC_API_BASE_URL in frontend/.env.local and restart the frontend.");
@@ -26,9 +34,25 @@ async function request<T>(workspace: string, path: string, method: string, signa
   }
   if (response.status === 204) return undefined as T;
   const result = await response.json();
+  // The deliberately minimal directory response has no workspace_id. Its join is
+  // scoped on the server; validate its shape without inventing an ownership field.
+  if (scope === "members") {
+    if (!Array.isArray(result) || result.some(row => !row || typeof row.user_id !== "string" || !isWorkspaceId(row.user_id) || typeof row.display_name !== "string" || typeof row.email !== "string" || typeof row.is_active !== "boolean" || !["owner", "admin", "member", "viewer"].includes(row.role))) throw new Error("The API returned an invalid member response.");
+    return result as T;
+  }
   const rows = Array.isArray(result) ? result : [result];
   if (rows.some(row => (path ? row.workspace_id : row.id) !== workspace.toLowerCase())) throw new Error("The API returned unexpected workspace data.");
   return result as T;
+}
+
+export async function listWorkspaceMembers(workspace: string, signal: AbortSignal): Promise<WorkspaceMember[]> {
+  const members: WorkspaceMember[] = [];
+  for (let offset = 0; ; offset += 200) {
+    signal.throwIfAborted();
+    const page = await request<WorkspaceMember[]>(workspace, `members?limit=200&offset=${offset}`, "GET", signal, undefined, "members");
+    members.push(...page);
+    if (page.length < 200) return members;
+  }
 }
 
 export const academicApi = {

@@ -4,12 +4,71 @@ Next.js with TypeScript, App Router, ESLint, and a src/ directory.
 Phase 4A provides a responsive workspace dashboard. System fonts and plain CSS
 keep builds independent of font downloads; no UI dependencies were added.
 
+All current date selection uses the shared visual `CalendarDatePicker`: Schedule,
+Find a Room and Reservations Start/End dates, plus Schedule and Reservation date
+filters. Dates display in a friendly format; no manual date entry or native date
+popup is required. Date/time rows retain separate hour, minute and AM/PM controls.
+
+## Reservations (Phase 4F)
+
+`/reservations` shows Total/Pending/Approved/Rejected/Cancelled counts, status and
+room filters, a calendar start-date filter, a room/time/status table, details, and
+a Create reservation form. All API pages are loaded before rendering. Filtering
+is local to those server records (the date filter uses the workspace-local start
+date, not interval overlap). Counts cover all loaded records, independent of filters.
+Details include title, description, attendees, member names/emails, review/rejection information,
+and created/updated/reviewed timestamps. Room labels include capacity and location.
+
+Creation submits the existing room, title, optional description, requester user ID,
+expected attendees, and start/end fields. Only active rooms are offered. Pending
+requests allow Approve, Reject, and Cancel; approved requests allow Cancel; rejected
+and cancelled records are read-only. Actions open explicit confirmation panels.
+Approval/rejection require a reviewer ID; rejection optionally includes a reason.
+Buttons disable during mutations. Counts and actions update from successful server
+responses only. Refresh data loads changes made by other sessions; after an uncertain
+network outcome, refresh before retrying. No edit/delete or booking-from-search is added.
+
+The reusable `CalendarDatePicker` renders a custom calendar in an HTML modal dialog
+in the browser top layer, avoiding panel clipping. It uses no new dependency and no
+native date popup. It provides month navigation, weekday labels, outside-month styling,
+selected/today states, friendly dates, arrow/Home/End/Page Up/Page Down navigation,
+Escape dismissal and focus return. The dialog fits the viewport and scrolls vertically
+on short screens. Dates are ISO date-only strings internally; timezone conversion is
+outside the calendar. Reservation Start/End reuse the large hour/minute/AM-PM selectors
+through the shared `DateTimeField`, also used by Schedule and Find a Room.
+Today, display and conversion use workspace metadata. Existing helpers
+reject nonexistent DST times, request earlier/later choices for repeated times, and
+validate start < end. End remains exclusive.
+
+The backend alone checks membership, capacity and conflicts. Its existing creation
+semantics reject active class conflicts but allow pending requests to overlap approved
+reservations. Approval rechecks both active classes and approved reservations. The UI
+does not calculate conflicts and shows backend conflict messages with room/time context.
+
+**Development identity selector — not authenticated.** Requester and reviewer controls
+load all pages of `GET /api/workspaces/{workspace_id}/members`, displaying names,
+emails and roles. Only active workspace members are selectable. The selected user ID
+is submitted through the existing `requested_by_user_id` / `reviewed_by_user_id` fields.
+No active members means creation and approval/rejection are disabled, with clear
+guidance and no manual-ID fallback. Cancellation remains available. No members are
+automatically created. Inactive members may still be named in historical details.
+Member-load failures block management until retry, rather than presenting partial data.
+Workspace switches discard selected identities, forms, filters and records, abort
+requests, and ignore old responses; aborting cannot undo an accepted server write.
+Selection does not log anyone in. Backend membership validation is not authorization;
+proper authentication and authorization remain future work.
+
+Automated tests mock all APIs and dialog browser primitives; they do not contact
+Supabase. Real-browser layout, dialog focus trapping and mobile checks remain part of
+manual acceptance. Data is a snapshot; large datasets may eventually need server-side
+filtering/pagination.
+
 ## Find a Room (Phase 4E)
 
 `/find-room` is a read-only search with When, Room requirements, and Available
 rooms sections. Start and End reuse the Schedule date/hour/minute/AM-PM controls
 and workspace timezone conversion, including rejection of nonexistent clock times
-and explicit earlier/later choices for repeated times. Dates support manual entry.
+and explicit earlier/later choices for repeated times. Dates use the shared visual calendar.
 
 Choose a positive minimum capacity, an optional named room type, and zero or more
 required facilities. ALL selected facilities are required. Search calls the existing
@@ -26,7 +85,7 @@ ignores old requests. Results are a snapshot, not a booking or guarantee; concur
 changes can affect paginated results. Search again for updated availability.
 
 The workspace selector remains temporary development tooling, not authentication
-or membership authorization. Single-room checks and reservation UI are deferred.
+or membership authorization. Single-room checks and booking from results are deferred.
 All automated coverage uses mocked APIs, with no Supabase access.
 
 ## Run locally
@@ -71,8 +130,8 @@ For large datasets, server aggregates/date filtering will be a future improvemen
 Each card/section handles loading, empty data, errors, and retry independently.
 Workspace changes unmount the previous dashboard and abort its requests.
 
-`/dashboard`, `/spaces`, `/academic`, `/schedule`, and `/find-room` are functional.
-`/reservations` remains a future-feature placeholder. `/` redirects to
+`/dashboard`, `/spaces`, `/academic`, `/schedule`, `/find-room`, and `/reservations`
+are functional. `/` redirects to
 the dashboard. Booking and availability-search UIs remain deferred.
 
 ## Schedule management (Phase 4D)

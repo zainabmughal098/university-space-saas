@@ -41,6 +41,12 @@ export interface Reservation extends RecordRead {
   reviewed_by_user_id: string | null; reviewed_at: string | null;
   rejection_reason: string | null; updated_at: string;
 }
+export type ReservationInput = Pick<Reservation, "room_id" | "requested_by_user_id" | "title" | "description" | "starts_at" | "ends_at" | "expected_attendees">;
+export interface ReservationReview { reviewed_by_user_id: string; rejection_reason?: string | null }
+export interface WorkspaceMember {
+  user_id: string; display_name: string; email: string;
+  role: "owner" | "admin" | "member" | "viewer"; is_active: boolean;
+}
 export interface Resources {
   floors: Floor; "room-types": RoomType; facilities: Facility;
   campuses: Campus; buildings: Building; rooms: Room; departments: Department;

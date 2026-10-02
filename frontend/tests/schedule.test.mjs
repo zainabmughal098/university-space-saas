@@ -7,6 +7,8 @@ for (const key of ["window", "document", "HTMLElement", "HTMLInputElement", "Mut
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { render, screen, fireEvent, cleanup, within, act } = await import("@testing-library/react");
+const { installDialogMock, selectCalendar } = await import("./calendar-helper.mjs");
+installDialogMock(dom);
 const { default: Schedule } = await import("../src/features/schedule.tsx");
 const { WorkspaceProvider, WorkspaceSelector } = await import("../src/components/workspace.tsx");
 afterEach(cleanup);
@@ -55,7 +57,7 @@ function setup(t, entries = [], control = {}) {
 function selectWorkspace(value) { fireEvent.change(screen.getByLabelText("Workspace UUID"), { target: { value } }); fireEvent.click(screen.getByRole("button", { name: "Use workspace" })); }
 const fill = (name, value) => fireEvent.change(screen.getByLabelText(name), { target: { value } });
 function fillTime(label, value) {
-  fill(`${label} date`, value.slice(0, 10));
+  selectCalendar(`${label} date`, value.slice(0, 10));
   const hour = Number(value.slice(11, 13));
   fill(`${label} hour`, String(hour % 12 || 12));
   fill(`${label} minute`, value.slice(14, 16));
@@ -104,10 +106,8 @@ test("split controls handle midnight/noon and expose no native datetime popup", 
   assert.equal(payload.starts_at, "2026-10-01T04:05:00Z");
   assert.equal(payload.ends_at, "2026-10-01T16:15:00Z");
 });
-test("manual dates and DST gaps are validated without mutations", async t => {
+test("calendar-selected DST gaps are validated without mutations", async t => {
   const { requests } = setup(t); await openCreate();
-  fill("Start date", "2026-02-30"); save(); assert.ok(screen.getByRole("alert"));
-  fill("Start date", ""); save(); assert.match(screen.getByRole("alert").textContent, /required/);
   fillTime("Start", "2026-03-08T02:30"); fillTime("End", "2026-03-08T04:00");
   save(); assert.match(screen.getByRole("alert").textContent, /does not exist/);
   assert.equal(requests.filter(row => row.method !== "GET").length, 0);
@@ -120,6 +120,17 @@ test("editing without changing split controls preserves existing seconds", async
   const payload = requests.find(row => row.method === "PATCH").body;
   assert.equal(payload.starts_at, precise.starts_at);
   assert.equal(payload.ends_at, precise.ends_at);
+});
+test("edit calendars display existing dates and update both dates in the payload", async t => {
+  const { requests } = setup(t, [entry]); await screen.findByRole("region", { name: "Schedule entries" });
+  fireEvent.click(within(table()).getByRole("button", { name: "Edit" }));
+  assert.ok(screen.getByRole("button", { name: "Start date Oct 1, 2026" }));
+  assert.ok(screen.getByRole("button", { name: "End date Oct 1, 2026" }));
+  selectCalendar("Start date", "2026-10-02"); selectCalendar("End date", "2026-10-02");
+  save(); await screen.findByRole("region", { name: "Schedule entries" });
+  const body = requests.find(row => row.method === "PATCH").body;
+  assert.equal(body.starts_at, "2026-10-02T13:00:00Z"); assert.equal(body.ends_at, "2026-10-02T14:00:00Z");
+  assert.equal(document.querySelector('input[type="date"]'), null);
 });
 test("fall-back interval can choose different start and end occurrences", async t => {
   const { requests } = setup(t); await openCreate();
@@ -152,7 +163,7 @@ for (const kind of ["room", "faculty", "section", "reservation"]) test(`${kind} 
 test("edit converts existing times, patch and deactivate/reactivate refresh", async t => {
   const { requests } = setup(t, [entry]); await screen.findByRole("region", { name: "Schedule entries" });
   fireEvent.click(within(table()).getByRole("button", { name: "Edit" }));
-  assert.equal(screen.getByLabelText("Start date").value, "2026-10-01");
+  assert.equal(document.querySelector('input[name="starts_at"]').value.slice(0, 10), "2026-10-01");
   assert.equal(screen.getByLabelText("Start hour").value, "9");
   fillTime("End", "2026-10-01T11:00"); save(); await screen.findByRole("region", { name: "Schedule entries" });
   assert.equal(requests.find(row => row.method === "PATCH").body.ends_at, "2026-10-01T15:00:00Z");
@@ -174,7 +185,7 @@ test("inactive parents are retained on edit but excluded from creation", async t
 });
 test("date and relationship/status filters use workspace date and can be cleared", async t => {
   setup(t, [entry]); await screen.findByRole("region", { name: "Schedule entries" });
-  fill("Start date (America/New_York)", "2026-10-02"); assert.ok(screen.getByText("No entries match these filters."));
+  selectCalendar("Start date (America/New_York)", "2026-10-02"); assert.ok(screen.getByText("No entries match these filters."));
   fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
   for (const key of ["rooms", "faculty", "sections", "courses"]) fill(`Filter ${key}`, id);
   assert.ok(table()); fill("Status", "inactive"); assert.ok(screen.getByText("No entries match these filters."));

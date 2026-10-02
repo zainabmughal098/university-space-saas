@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_session
-from app.schemas import ErrorResponse, FacilityRead, RoomFacilityRead, WorkspaceRead
+from app.schemas import ErrorResponse, FacilityRead, RoomFacilityRead, WorkspaceRead, WorkspaceMemberRead
 from app.services import WorkspaceService, RESOURCES, Resource
 from app.scheduling import SchedulingService
 from app.scheduling_schemas import (AvailabilityQuery, AvailableRoom, IntervalQuery,
@@ -30,6 +30,11 @@ Offset = Annotated[int, Query(ge=0)]
 @router.get("", response_model=WorkspaceRead, tags=["workspaces"])
 def workspace_metadata(service: Service):
     return service.metadata()
+
+
+@router.get("/members", response_model=list[WorkspaceMemberRead], tags=["workspaces"])
+def workspace_members(service: Service, limit: Limit = 100, offset: Offset = 0):
+    return service.members(limit, offset)
 
 
 # Register the literal availability path before /rooms/{resource_id}.

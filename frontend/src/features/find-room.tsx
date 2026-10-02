@@ -1,5 +1,6 @@
 "use client";
 
+import { Temporal } from "@js-temporal/polyfill";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useWorkspace } from "@/components/workspace";
 import { DateTimeField } from "@/components/date-time-field";
@@ -61,8 +62,8 @@ function WorkspaceFindRoom({ workspace }: { workspace: string }) {
       <section className="panel space-editor schedule-editor"><header className="schedule-editor-header"><h2>Search availability</h2><p className="muted">{metadata.workspace.name} · Times are entered in <strong>{zone}</strong>.</p></header>
         <form onSubmit={search} onChange={() => { setResult(null); setError(""); }}>
           <fieldset disabled={searching}>
-            <section className="schedule-time-section" aria-labelledby="find-room-when"><h3 id="find-room-when">When</h3><p className="muted">Enter dates as YYYY-MM-DD. End time is exclusive; back-to-back use is allowed.</p>
-              <div className="schedule-time-rows"><DateTimeField label="Start" name="starts_at" defaultValue="" /><DateTimeField label="End" name="ends_at" defaultValue="" /></div>
+            <section className="schedule-time-section" aria-labelledby="find-room-when"><h3 id="find-room-when">When</h3><p className="muted">End time is exclusive; back-to-back use is allowed.</p>
+              <div className="schedule-time-rows"><DateTimeField label="Start" name="starts_at" defaultValue="" calendarToday={Temporal.Now.plainDateISO(zone).toString()} onDateChange={() => { setResult(null); setError(""); }} /><DateTimeField label="End" name="ends_at" defaultValue="" calendarToday={Temporal.Now.plainDateISO(zone).toString()} onDateChange={() => { setResult(null); setError(""); }} /></div>
             </section>
             <fieldset className="schedule-advanced"><legend>Advanced time options</legend><p className="muted">Choose an occurrence only when a local time repeats during a clock change.</p><div className="schedule-advanced-grid">
               {(["starts", "ends"] as const).map(key => <label key={key}>Repeated {key === "starts" ? "start" : "end"} clock time<select name={`${key}_occurrence`} defaultValue="reject"><option value="reject">Ask if a time occurs twice</option><option value="earlier">Earlier occurrence</option><option value="later">Later occurrence</option></select></label>)}
