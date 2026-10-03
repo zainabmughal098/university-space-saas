@@ -4,6 +4,8 @@ import { Temporal } from "@js-temporal/polyfill";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useWorkspace } from "@/components/workspace";
 import { DateTimeField } from "@/components/date-time-field";
+import Link from "next/link";
+import { reservationRequestHref } from "@/lib/reservation-prefill";
 import { Empty, Failure } from "@/components/ui";
 import { findAvailableRooms, listAll, scheduleApi } from "@/lib/api";
 import type { AvailabilityQuery, AvailableRoom, Facility, RoomType, WorkspaceRead } from "@/lib/api-types";
@@ -90,6 +92,7 @@ function WorkspaceFindRoom({ workspace }: { workspace: string }) {
             <p>{room.room_type.name}</p><p className="room-location">{room.campus.name} → {room.building.name} → {room.floor.name}</p>
             <p className="muted">Requested minimum: {result.query.minimum_capacity}</p>
             <h4>Facilities</h4>{room.facilities.length ? <ul className="room-facility-tags">{room.facilities.map(facility => <li key={facility.id}>{facility.name}</li>)}</ul> : <p className="muted">No facilities listed.</p>}
+            <div className="room-request-action"><Link className="button" prefetch={false} href={reservationRequestHref(workspace, room.id, result.query.starts_at, result.query.ends_at, zone)} aria-label={`Request this room: ${room.code} — ${room.name}`}>Request this room</Link></div>
           </article>)}</div>}
         </>}
       </section>

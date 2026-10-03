@@ -13,9 +13,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { render, screen, fireEvent, cleanup, within, act } = await import("@testing-library/react");
 const { default: Reservations } = await import("../src/features/reservations.tsx");
 const { CalendarDatePicker } = await import("../src/components/calendar-date-picker.tsx");
+const { reservationRequestHref, readReservationPrefill } = await import("../src/lib/reservation-prefill.ts");
 const { listWorkspaceMembers } = await import("../src/lib/api.ts");
 const { WorkspaceProvider, WorkspaceSelector } = await import("../src/components/workspace.tsx");
-afterEach(cleanup);
+afterEach(() => { cleanup(); window.history.replaceState({}, "", "/reservations"); });
 const a = "11111111-1111-1111-1111-111111111111", b = "22222222-2222-2222-2222-222222222222", id = "33333333-3333-3333-3333-333333333333";
 const base = { id, workspace_id: a, created_at: "2026-10-01T12:00:00Z", is_active: true };
 const reservation = { ...base, room_id: id, requested_by_user_id: id, title: "Planning meeting", description: "Term planning", starts_at: "2026-10-05T13:00:00Z", ends_at: "2026-10-05T14:00:00Z", expected_attendees: 20, status: "pending", reviewed_by_user_id: null, reviewed_at: null, rejection_reason: null, updated_at: base.created_at };
@@ -24,6 +25,8 @@ function selectWorkspace(value) { fill("Workspace UUID", value); fireEvent.click
 function setup(t, entries = [], control = {}, selected = true) {
   process.env.NEXT_PUBLIC_API_BASE_URL = "http://api.example.test";
   const data = structuredClone({ reservations: entries, members: control.members ?? [{ user_id: id, display_name: "Sara Ahmed", email: "sara@example.test", role: "member", is_active: true }, { user_id: b, display_name: "Inactive member", email: "inactive@example.test", role: "viewer", is_active: false }], rooms: [{ ...base, name: "Lecture Hall", code: "LT-1", capacity: 100, floor_id: id, room_type_id: id }], floors: [{ ...base, name: "Ground", building_id: id, floor_number: 0 }], buildings: [{ ...base, name: "Science", campus_id: id, code: "SC" }], campuses: [{ ...base, name: "North", code: "N", address: null }] });
+  if (control.inactiveRoom) data.rooms[0].is_active = false;
+  window.history.replaceState({}, "", `/reservations${control.prefill ? "?" + control.prefill : ""}`);
   const requests = [];
   t.mock.method(globalThis, "fetch", async (url, options = {}) => {
     const path = new URL(url).pathname.split("/"), workspace = path[3], resource = path[4], method = options.method ?? "GET";
@@ -42,7 +45,7 @@ function setup(t, entries = [], control = {}, selected = true) {
     if (options.body) Object.assign(row, JSON.parse(options.body), { reviewed_at: base.created_at });
     return Response.json(row);
   });
-  render(React.createElement(WorkspaceProvider, null, React.createElement(WorkspaceSelector), React.createElement(Reservations)));
+  render(React.createElement(WorkspaceProvider, null, React.createElement(WorkspaceSelector), React.createElement(Reservations, { prefillSearch: control.prefill ?? "" })));
   if (selected) selectWorkspace(a);
   return { data, requests, control, writes: () => requests.filter(row => row.method !== "GET") };
 }
@@ -212,4 +215,66 @@ test("member client paginates and validates the minimal response", async t => {
   });
   assert.equal((await listWorkspaceMembers(a, new AbortController().signal)).length, 201); assert.deepEqual(offsets, ["0", "200"]);
   malformed = true; await assert.rejects(listWorkspaceMembers(a, new AbortController().signal), /invalid member response/);
+});
+
+const prefill = (changes = {}) => {
+  const params = new URLSearchParams(reservationRequestHref(a, id, "2026-10-06T09:00:00Z", "2026-10-06T10:00:00Z", "Asia/Karachi").split("?")[1]);
+  for (const [key, value] of Object.entries(changes)) {
+    if (value === null) params.delete(key);
+    else params.set(key, value);
+  }
+  return params.toString();
+};
+test("valid availability prefill opens create, preserves local time and clears URL after success", async t => {
+  const { writes } = setup(t, [], { prefill: prefill(), zone: "Asia/Karachi" }); await ready();
+  assert.ok(screen.getByText(/Room selected from availability search/));
+  assert.equal(screen.getByLabelText("Room *").value, id);
+  assert.ok(screen.getByRole("button", { name: "Start date Oct 6, 2026" }));
+  assert.ok(screen.getByRole("button", { name: "End date Oct 6, 2026" }));
+  assert.equal(screen.getByLabelText("Start hour").value, "2"); assert.equal(screen.getByLabelText("End hour").value, "3");
+  assert.equal(screen.getByLabelText("Start AM/PM").value, "PM");
+  assert.equal(screen.getByLabelText("Development requester *").value, ""); assert.equal(screen.getByLabelText("Expected attendees *").value, "");
+  fill("Title *", "Requested room"); fill("Expected attendees *", "20"); fill("Development requester *", id); submit("Create request");
+  await screen.findByText("Reservation request created.");
+  assert.equal(writes()[0].body.starts_at, "2026-10-06T09:00:00Z"); assert.equal(writes()[0].body.ends_at, "2026-10-06T10:00:00Z");
+  assert.equal(window.location.search, ""); assert.ok(within(table()).getByText("Pending"));
+  assert.equal(screen.queryByRole("region", { name: "Reservation panel" }), null);
+  fireEvent.click(screen.getByRole("button", { name: "Refresh data" })); await ready();
+  assert.equal(screen.queryByRole("region", { name: "Reservation panel" }), null);
+});
+test("prefilled room and dates stay editable and cancel consumes navigation context", async t => {
+  setup(t, [], { prefill: prefill(), zone: "Asia/Karachi" }); await ready();
+  fill("Room *", ""); assert.equal(screen.getByLabelText("Room *").value, ""); fill("Room *", id);
+  date("Start", "Oct 7, 2026"); date("End", "Oct 7, 2026"); clock("Start", "4", "15", "PM"); clock("End", "5", "45", "PM");
+  assert.equal(document.querySelector('input[name="starts_at"]').value, "2026-10-07T16:15");
+  assert.equal(document.querySelector('input[name="ends_at"]').value, "2026-10-07T17:45");
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" })); assert.equal(window.location.search, "");
+  fireEvent.click(screen.getByRole("button", { name: "Create reservation" }));
+  assert.equal(screen.getByLabelText("Room *").value, ""); assert.equal(document.querySelector('input[name="starts_at"]').value, "");
+});
+for (const changes of [{ request_room: "invalid" }, { request_room: b }, { request_workspace: b }, { request_start: "bad" }, { request_end: "bad" }, { request_end: "2026-10-06T09:00:00Z" }, { request_end: "2026-10-06T08:00:00Z" }, { request_start: null }, { request_timezone: "UTC" }]) {
+  test(`unsafe prefill opens a blank form: ${JSON.stringify(changes)}`, async t => {
+    setup(t, [], { prefill: prefill(changes), zone: "Asia/Karachi" }); await ready();
+    assert.ok(screen.getByText(/selection could not be applied/));
+    assert.equal(screen.getByLabelText("Room *").value, ""); assert.equal(document.querySelector('input[name="starts_at"]').value, "");
+    assert.equal(window.location.search, "");
+  });
+}
+test("inactive room is not prefilled; duplicate parameters and local timestamps are rejected", async t => {
+  setup(t, [], { prefill: prefill(), zone: "Asia/Karachi", inactiveRoom: true }); await ready(); assert.ok(screen.getByText(/selection could not be applied/));
+  const rooms = [{ id, workspace_id: a, is_active: true }];
+  for (const query of [prefill() + "&request_room=" + id, prefill({ request_start: "2026-10-06T14:00:00" })]) assert.equal(readReservationPrefill(query, a, "Asia/Karachi", rooms).value, undefined);
+});
+test("normal visit does not auto-open and workspace switch discards prefill permanently", async t => {
+  setup(t); await ready(); assert.equal(screen.queryByRole("region", { name: "Reservation panel" }), null); cleanup();
+  setup(t, [], { prefill: prefill(), zone: "Asia/Karachi" }); await ready();
+  selectWorkspace(b); await ready(); assert.equal(screen.queryByText(/Room selected from availability search/), null);
+  assert.equal(screen.queryByRole("region", { name: "Reservation panel" }), null); assert.equal(window.location.search, "");
+  selectWorkspace(a); await ready(); assert.equal(screen.queryByRole("region", { name: "Reservation panel" }), null);
+});
+test("a carried repeated-time instant preserves its occurrence on submission", async t => {
+  const { writes } = setup(t, [], { prefill: prefill({ request_timezone: "America/New_York", request_start: "2026-11-01T06:30:00Z", request_end: "2026-11-01T08:00:00Z" }) }); await ready();
+  assert.equal(screen.getByLabelText("Start hour").value, "1");
+  fill("Title *", "DST request"); fill("Expected attendees *", "10"); fill("Development requester *", id); submit("Create request"); await screen.findByText("Reservation request created.");
+  assert.equal(writes()[0].body.starts_at, "2026-11-01T06:30:00Z");
 });

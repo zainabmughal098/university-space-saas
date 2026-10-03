@@ -5,8 +5,9 @@ import React from "react";
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost:3000" });
 for (const key of ["window", "document", "HTMLElement", "HTMLInputElement", "MutationObserver", "FormData"]) globalThis[key] = dom.window[key];
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
+globalThis.self = dom.window;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-const { render, screen, fireEvent, cleanup, act } = await import("@testing-library/react");
+const { render, screen, fireEvent, cleanup, act, within } = await import("@testing-library/react");
 const { installDialogMock, selectCalendar } = await import("./calendar-helper.mjs");
 installDialogMock(dom);
 const { default: FindRoom } = await import("../src/features/find-room.tsx");
@@ -66,6 +67,10 @@ test("timezone, capacity, type and ALL facilities query display human-readable r
   assert.equal(url.searchParams.get("minimum_capacity"), "50"); assert.equal(url.searchParams.get("room_type_id"), id);
   assert.deepEqual(url.searchParams.getAll("facility_ids"), [id, other]);
   const card = screen.getByRole("article");
+  const requestLink = within(card).getByRole("link", { name: /Request this room/ });
+  const destination = new URL(requestLink.href);
+  assert.equal(destination.pathname, "/reservations");
+  assert.deepEqual(Object.fromEntries(destination.searchParams), { request_workspace: a, request_room: id, request_start: "2026-10-01T13:00:00Z", request_end: "2026-10-01T14:00:00Z", request_timezone: "America/New_York" });
   for (const text of ["LT-1", "Lecture Hall", "100", "Lecture Theatre", "North Campus", "Science Block", "Ground Floor", "Projector", "Whiteboard"]) assert.ok(card.textContent.includes(text));
   fill("Minimum capacity *", "60"); assert.equal(screen.queryByRole("article"), null);
 });
@@ -99,6 +104,7 @@ test("loading disables search and no-results explains next step; optional filter
   await act(async () => { resolve(); }); await screen.findByText("0 rooms available");
   assert.ok(screen.getByText(/No rooms match this interval/));
   assert.equal(searches()[0].url.searchParams.has("room_type_id"), false); assert.deepEqual(searches()[0].url.searchParams.getAll("facility_ids"), []);
+  assert.equal(screen.queryByRole("link", { name: /Request this room/ }), null);
 });
 test("API and network errors retain criteria and allow retry", async t => {
   const { control } = setup(t, { failure: true }); await ready(); search(); await screen.findByRole("alert");

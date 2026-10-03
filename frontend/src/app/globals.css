@@ -1,4 +1,6 @@
 :root { --ink: #192d32; --muted: #5d7075; --line: #dce5e4; --accent: #176658; --surface: #fff; --background: #f3f6f5; }
+.room-request-action { display: flex; justify-content: flex-end; margin-top: 20px; }
+.room-request-action .button { min-height: 48px; }
 .calendar-field { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .calendar-label { font-size: 12px; font-weight: 600; }
 .calendar-field .calendar-trigger { width: 100%; min-height: 48px; justify-content: flex-start; font-size: 16px; font-weight: 400; text-align: left; }

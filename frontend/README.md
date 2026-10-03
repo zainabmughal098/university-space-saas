@@ -9,6 +9,29 @@ Find a Room and Reservations Start/End dates, plus Schedule and Reservation date
 filters. Dates display in a friendly format; no manual date entry or native date
 popup is required. Date/time rows retain separate hour, minute and AM/PM controls.
 
+## Find a Room to reservation request (Phase 4G)
+
+Each available room offers **Request this room**, navigating to `/reservations` and
+opening the existing Create form. The URL carries only `request_workspace`,
+`request_room`, `request_start`, `request_end`, and `request_timezone`. Times are
+absolute ISO instants converted back into the workspace's local calendar/time controls;
+an unchanged repeated DST time preserves the occurrence chosen during the search.
+Room and times remain editable. Title, attendees and development requester remain
+unfilled; capacity/type/facility filters and identities are not carried in the URL.
+
+The form validates this untrusted context against freshly loaded workspace metadata
+and active rooms. Missing, malformed, cross-workspace or timezone-mismatched context
+opens a blank form with guidance. Workspace changes discard old prefill. Successful
+creation and Cancel clear the context from the URL, so refreshing does not reopen it.
+Normal direct visits do not auto-open Create. Client navigation preserves the selected
+workspace; after a full reload, select the matching workspace with the existing selector.
+
+Availability is a snapshot, not a booking or lock. The same reservation endpoint
+validates the final submitted values and creates a pending request. Approval still
+controls occupancy under the existing backend rules. Development identity selection
+is not authentication. Cancelling returns to the Reservations list; search results
+are not persisted through a new global store.
+
 ## Reservations (Phase 4F)
 
 `/reservations` shows Total/Pending/Approved/Rejected/Cancelled counts, status and
@@ -26,7 +49,7 @@ and cancelled records are read-only. Actions open explicit confirmation panels.
 Approval/rejection require a reviewer ID; rejection optionally includes a reason.
 Buttons disable during mutations. Counts and actions update from successful server
 responses only. Refresh data loads changes made by other sessions; after an uncertain
-network outcome, refresh before retrying. No edit/delete or booking-from-search is added.
+network outcome, refresh before retrying. No edit/delete or automatic booking is added.
 
 The reusable `CalendarDatePicker` renders a custom calendar in an HTML modal dialog
 in the browser top layer, avoiding panel clipping. It uses no new dependency and no
@@ -85,7 +108,7 @@ ignores old requests. Results are a snapshot, not a booking or guarantee; concur
 changes can affect paginated results. Search again for updated availability.
 
 The workspace selector remains temporary development tooling, not authentication
-or membership authorization. Single-room checks and booking from results are deferred.
+or membership authorization. Single-room checks and automatic booking remain deferred.
 All automated coverage uses mocked APIs, with no Supabase access.
 
 ## Run locally

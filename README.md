@@ -30,6 +30,10 @@ Phase 4F adds Reservations management with a reusable calendar, workspace-local
 date/time entry, status filters/counts, details and create/approve/reject/cancel
 workflows. A read-only workspace-member directory powers named development identity
 selectors; these are not authentication. See [Reservations usage](frontend/README.md#reservations-phase-4f).
+Phase 4G connects Find a Room results to an editable, prefilled reservation request.
+Availability remains a snapshot; all submissions use existing backend validation.
+No identity is carried in navigation and requests are not automatically approved.
+See [the request workflow](frontend/README.md#find-a-room-to-reservation-request-phase-4g).
 Authentication, database-enforced read isolation (RLS),
 imports, analytics, optimization, and AI are not implemented.
 
